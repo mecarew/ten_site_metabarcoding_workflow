@@ -1,0 +1,750 @@
+---
+title: "macroinvertebrates_morph_comparisions"
+author: "Melissa Carew"
+date: "11/11/2025"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# load libraries
+library(tidyverse)
+library(vegan)
+library(compositions)
+library(dplyr)
+library(tidyr)
+```
+
+```{r}
+
+# add bug codes to dna data
+fambc <- read.csv(here::here("data/family_bugcodes.csv"))
+
+# read in DNA data and algin with full data lables
+metab_filt <- read.csv("~/git/ten_site_metabarcoding/results/ten_site_data_summaries/ten_sites_long_format_11_11_2025.csv") %>%
+  mutate(
+    site = case_when(
+      site == "FEH41843"  ~ "FEH-4184-3",
+      site == "YAR36377"  ~ "YAR-3637-7",
+      site == "BNY29042"  ~ "BNY-2904-2",
+      site == "UYT1993"   ~ "UYT-199-3",
+      site == "WMI2320"   ~ "WMI-232-0",
+      site == "FER6475"   ~ "FER-647-5",
+      site == "GRD75620"  ~ "GRD-7562-0",
+      site == "TOO42700"  ~ "TOO-4270-0",
+      site == "DNG318813" ~ "DNG-31881-3",
+      site == "DNG79574"  ~ "DNG-7957-4",
+      TRUE ~ site  # keep all others unchanged
+    )
+  )
+
+metab_filt <- metab_filt %>%
+  left_join(fambc %>% select(family, shortcode), by = "family")
+
+# move data with bug codes into a new df
+metab_filt_macro <- metab_filt %>%
+  filter(!is.na(shortcode)) 
+
+# # separate out chironomids
+# metab_filt_chir <- metab_filt %>% filter(family == "Chironomidae")  %>%
+#   select(-shortcode) #17183
+
+# metab_filt_chirbc <- metab_filt_chir %>%
+#   left_join(chirbc %>% select(genus, shortcode), by = "genus") %>% 
+#   mutate(
+#     shortcode = case_when(
+#       str_detect(species, "Podonominae") ~ "QDAD",
+#       str_detect(species, "Aphroteniinae") ~ "QDAA",
+#       str_detect(species, "Diamesinae") ~ "QDAB",
+#       str_detect(species, "Tanypodinae") ~ "QDAE",
+#       str_detect(species, "Orthocladiinae") ~ "QDAF",
+#       str_detect(species, "Chironominae") ~ "QDAJ",
+#       str_detect(species, "Tanytarsini") ~ "QDAJ",
+#       str_detect(species, "Chironomidae") ~ "QDAZ",
+#       TRUE ~ shortcode
+#     ),
+#     shortcode = ifelse(
+#       family == "Chironomidae" & (is.na(species) | trimws(species) == ""),
+#       "QDAZ",
+#       shortcode
+#     ),
+#     family = case_when(
+#       shortcode == "QDAZ" ~ "Aphroteniinae",
+#       shortcode == "QDAZ" ~ "Diamesinae",
+#       shortcode == "QDAZ" ~ "Podonominae",
+#       shortcode == "QDAZ" ~ "Tanypodinae",
+#       shortcode == "QDAZ" ~ "Orthocladiinae",
+#       shortcode == "QDAZ" ~ "Chironominae",
+#       TRUE ~ family
+#     )
+#   )
+# 
+# metab_filt_macro <- rbind(metab_filt_bc, metab_filt_chirbc) # 
+
+no_bc <- metab_filt %>%
+  anti_join(metab_filt_macro, by = "shortcode") #
+```
+
+# How many sequences and ASVs were assigned to species
+```{r}
+# total number of ASVs
+num_asv <- length(unique(metab_filt_macro$asv_code))
+
+#short amplicon (BF1/BR1) ASV's 
+short_asv <- metab_filt_macro[metab_filt_macro$amplicon == "short", ]
+uni_short <- length(unique(short_asv$asv_code))
+short_asv_reads <- sum(short_asv$reads)
+
+#right amplicon (mICOIintF/dgHCO2198) ASV's 
+right_asv <- metab_filt_macro[metab_filt_macro$amplicon == "right", ]
+uni_right <- length(unique(right_asv$asv_code))
+right_asv_reads <- sum(right_asv$reads)
+
+# total number of ASVs with species identifications
+metabar_97 <- subset(metab_filt_macro, max_p_identity >= 97)
+num_asv_sp <- length(unique(metabar_97$asv_code))
+
+# calculate the percentage of ASVs with species ids
+percentage_asv_id <- num_asv_sp / num_asv *100
+
+# total number of high quality reads
+total_reads <- sum(metab_filt_macro$reads)
+
+# total number of high quality reads with species identifications
+sp_reads <- sum(metabar_97$reads)
+
+# calculate the percentage of reads with species identifications
+percentage_sp_ids <- sp_reads/ total_reads *100
+
+# how many species/families
+sp_count <- length(unique(metabar_97$species))
+fam_count <- length(unique(metabar_97$family))
+
+# print stats
+print(paste("total_reads_used in_analysis =", total_reads))
+print(paste("Total_no_of_ASVs =",num_asv))
+print(paste("Total_no_of_ASVs_short amplicon_(B/R5)  =", uni_short))
+print(paste("Total_no_of_reads_short amplicon_(B/R5)  =", short_asv_reads))
+print(paste("Total_no_of_ASVs_right amplicon_(mICOIintF/dgHCO2198)  =", uni_right))
+print(paste("Total_no_of_reads_right amplicon_(mICOIintF/dgHCO2198)  =", right_asv_reads))
+print(paste("percentage_asv_id_to_species =", percentage_asv_id))
+print(paste("percentage of reads with species identifications", percentage_sp_ids))
+print(paste("no. of species = ", sp_count))
+print(paste("no. of family = ", fam_count))
+```
+```{r}
+# load site and dry wieght data
+site_dw <- read.csv(here::here("data/ten_site_dry_weight.csv"))
+
+# Load morphological data files
+morph50 <- read.csv(here::here("data/ten_site_50ml_morph_data.csv"))
+morph_larg <- read.csv(here::here("data/ten_site_large_frac_data.csv"))
+
+morph50_count <- morph50 %>%
+  group_by(site) %>%
+  summarise(shortcode_count = n_distinct(shortcode))
+
+morph50_sum <- morph50 %>%
+  group_by(site) %>%
+  summarise(total_abundance = sum(count, na.rm = TRUE))
+
+morph_larg_count <- morph_larg %>%
+  group_by(site) %>%
+  summarise(shortcode_count = n_distinct(shortcode))
+  
+morph_larg_sum <- morph_larg %>% 
+  group_by(site) %>%
+  summarise(total_abundance = sum(count, na.rm = TRUE))
+
+# --- combine all summaries ---
+morph_sum <- morph50_count %>%
+  full_join(morph50_sum, by = "site") %>%
+  full_join(morph_larg_count, by = "site") %>%
+  full_join(morph_larg_sum, by = "site") %>%
+  left_join(
+    site_dw %>% select(site, rich_class, abund_class),
+    by = "site"
+  ) %>% 
+  rename(
+    count_50ml = shortcode_count.x,
+    abundance_50ml = total_abundance.x,
+    count_larfrac = shortcode_count.y,
+    abundance_larfrac = total_abundance.y
+  ) %>%
+  select(site, rich_class, abund_class,
+         count_50ml, abundance_50ml,
+         count_larfrac, abundance_larfrac)
+
+write.csv(morph_sum, "~/git/ten_site_metabarcoding/data_analysis/morph_table/ten_site_morph_summary.csv")
+```
+
+```{r}
+
+missing_pairs_morph50 <- morph50 %>%
+  filter(!is.na(shortcode), shortcode != "") %>%
+  select(site, shortcode, family) %>%
+  distinct() %>%   # <-- removes exact duplicates
+  anti_join(
+    metab_filt_macro %>%
+      select(site, shortcode) %>%
+      distinct(),
+    by = c("site", "shortcode")
+  ) %>%
+  arrange(site, shortcode)
+
+missing_pairs_morph50
+```
+
+```{r}
+
+missing_pairs_morph_larg <- morph_larg %>%
+  filter(!is.na(shortcode), shortcode != "") %>%  # ignore blank or missing shortcodes
+  select(site, shortcode, family) %>%
+  anti_join(
+    metab_filt_macro %>%
+      select(site, shortcode) %>%
+      distinct(),
+    by = c("site", "shortcode")
+  ) %>%
+  arrange(site, shortcode)
+
+missing_pairs_morph_larg
+```
+
+
+
+
+```{r}
+# assigning common group names
+
+no_bc <- no_bc %>%
+  mutate(group = case_when(
+    # Terrestrial invertebrates
+    order %in% c("Hymenoptera", "Araneae", "Sarcoptiformes", "Pseudoscorpiones", "Mesostigmata") ~ "terrestrial invertebrate",
+    class %in% c("Collembola", "Diplopoda", "Chilopoda", "Symphyla") ~ "terrestrial invertebrate",
+    phylum %in% c("Mollusca") ~ "terrestrial invertebrate",
+    class == "Insecta" & !is.na(species) & species != "" ~ "terrestrial invertebrate",
+    family %in% c("Ocnerodrilidae", "Bdellidae") ~ "terrestrial invertebrate",
+    
+    # Freshwater microinvertebrates
+    class %in% c("Branchiopoda", "Ostracoda", "Hexanauplia", "Gymnolaemata") ~ "freshwater microinvertebrate",
+    phylum %in% c("Tardigrada", "Bryozoa","Tubulinea", "Gastrotricha") ~ "freshwater microinvertebrate",
+    
+    # Fungi
+    phylum %in% c("Ascomycota", "Mucoromycota", "Heterokontophyta", "Basidiomycota") ~ "fungi",
+
+    # Fish
+    phylum == "Chordata" ~ "fish",
+    
+    # Amoeba / Zooplankton / Rotifers
+    phylum %in% c("Rotifera", "Amoebozoa", "Evosea","Discosea") ~ "amoeba/rotifers/zooplankton",
+    species == "uncultured zooplankton" ~ "amoeba/rotifers/zooplankton",
+    
+    # Algae
+    phylum %in% c("Rhodophyta", "Ochrophyta", "Bacillariophyta", "Chlorophyta", "Streptophyta") | class == "Phaeophyceae" ~ "algae/plants",
+    
+    # Unassigned
+    kingdom == "Unassigned" ~ "unassigned",
+    kingdom == "Eukaryota" & (is.na(phylum) | phylum == "") & (is.na(class) | class == "") ~ "unassigned",
+    
+    # Invertebrates (unknown origin)
+    phylum %in% c("Platyhelminthes", "Nemertea", "Nematoda", "Cnidaria", "Porifera", "Polychaeta", "invertebrate environmental sample") ~ "invertebrates (unknown origin)",
+    class == "Malacostraca" ~ "invertebrates (unknown origin)",
+    phylum == "Annelida" & (is.na(species) | species == "") ~ "invertebrates (unknown origin)",
+    class %in% c("Insecta", "Trombidiformes") & (is.na(species) | species == "") ~ "invertebrates (unknown origin)",
+    species %in% c("Enchytraeida sp. MC-2", "Haplotaxida sp. MC-1") ~ "invertebrates (unknown origin)",
+    phylum == "Arthropoda" & (!is.na(class) & class == "") ~ "invertebrates (unknown origin)",
+    class == "Arachnida" & (is.na(order) | order == "") ~ "invertebrates (unknown origin)",
+    order == "Trombidiformes" & (is.na(family) | family == "") ~ "invertebrates (unknown origin)",
+    
+    # Bacteria
+    kingdom == "Prokaryota" ~ "bacteria",
+    
+    # Fallback
+    TRUE ~ NA_character_
+  ))
+
+metab_filt_macro <- metab_filt_macro %>%
+  mutate(group = "freshwater macroinvertebrates")
+
+metab_filt_grps <- rbind(metab_filt_macro, no_bc) %>%
+  select(group, asv_code, reads) %>%
+  group_by(asv_code, group) %>%       # group by ASV and group
+  summarise(reads = sum(reads, na.rm = TRUE), .groups = "drop")  # sum reads per ASV/group
+
+# Summarise by group
+asv_reads_grp_sum<- metab_filt_grps %>%
+  group_by(group) %>%
+  summarise(
+    n_asv = n_distinct(asv_code),   # count unique ASVs
+    total_reads = sum(reads, na.rm = TRUE),  # sum reads
+    .groups = "drop"
+  )
+
+# View the summary
+asv_reads_grp_sum
+
+write.csv(asv_reads_grp_sum, "~/git/ten_site_metabarcoding/data_analysis/pie charts/asv_reads_grp_sum.csv")
+```
+```{r}
+# Load packages
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+
+# Helper: format % (>=1 no decimals, <1 one decimal)
+format_perc <- function(x) {
+  ifelse(x >= 1, sprintf("%.0f%%", x), sprintf("%.1f%%", x))
+}
+
+# Prepare data function (compute angles and label positions for pie)
+prep_pie <- function(df, value_col) {
+  df2 <- df %>%
+    mutate(value = .data[[value_col]],
+           perc = value / sum(value) * 100) %>%
+    arrange(desc(perc)) %>%
+    mutate(
+      ymax = cumsum(perc),
+      ymin = ymax - perc,
+      label = format_perc(perc),
+      # midpoint of slice for angle
+      mid = (ymin + ymax)/2,
+      angle = 90 - mid * 360/100,
+      # hjust depends on left/right side of pie
+      hjust = ifelse(angle < -90, 1, 0),
+      angle = ifelse(angle < -90, angle + 180, angle)
+    )
+  return(df2)
+}
+
+# Prepare both datasets
+asv_df <- prep_pie(asv_reads_grp_sum, "n_asv")
+reads_df <- prep_pie(asv_reads_grp_sum, "total_reads")
+
+# Function to build a pie plot
+make_pie <- function(plot_df, title, show_legend = FALSE) {
+  p <- ggplot(plot_df, aes(x = 1, ymin = ymin, ymax = ymax, xmin = 0, xmax = 1, fill = group)) +
+    geom_rect(color = "white") +
+    coord_polar(theta = "y") +
+    # segment connecting slice to label
+    geom_segment(aes(x = 1, xend = 1.1, y = mid, yend = mid),
+                 inherit.aes = FALSE, size = 0.4, colour = "grey40") +
+    # text labels outside pie
+    geom_text(aes(x = 1.5, y = mid, label = label, angle = angle, hjust = hjust),
+              inherit.aes = FALSE, size = 2) +
+    labs(title = title) +
+    theme_void(base_size = 14) +
+    theme(
+      plot.title = element_text(
+        hjust = 0.5,
+        face = "bold",
+        size = 16,
+        margin = margin(b = 3)   # move title closer to pie
+      ),
+      legend.position = ifelse(show_legend, "right", "none"),
+      legend.title = element_blank(),
+      legend.text = element_text(size = 8),
+      legend.key.size = unit(0.5, "lines"),
+      legend.spacing.y = unit(0.3, "cm"),
+      plot.margin = margin(t = 0, r = 5, b = 5, l = 5)
+    )
+  return(p)
+}
+
+# Build plots
+p_asv <- make_pie(asv_df, "Proportion of ASVs", show_legend = FALSE)
+p_reads <- make_pie(reads_df, "Proportion of Reads", show_legend = TRUE)
+
+# Combine and adjust relative sizes (make pies larger vs legend/title)
+combined <- p_asv + p_reads + plot_layout(widths = c(1.3, 1.4))
+
+# Print
+combined
+
+```
+
+```{r}
+metab_filt_macro_fam_count <- metab_filt_macro %>%
+  group_by(site) %>%
+  summarise(shortcode_count = n_distinct(shortcode))
+
+metab_filt_macro_sp_count <- metab_filt_macro %>%
+  group_by(site) %>%
+  summarise(species = n_distinct(species))
+
+metab_filt_macro_summary <- metab_filt_macro %>%
+  group_by(site) %>%
+  summarise(
+    shortcode_count = n_distinct(shortcode),
+    species_count = n_distinct(species)
+  )
+
+# Example: if your df is named metab_filt_macro_summary
+# with columns: site, species_count, shortcode_count
+# rename 'shortcode_count' to 'families' for clarity
+metab_filt_macro_summary <- metab_filt_macro_summary %>%
+  rename(families = shortcode_count, species = species_count)
+
+# Pivot to long format for ggplot
+plot_data <- metab_filt_macro_summary %>%
+  pivot_longer(cols = c(species, families),
+               names_to = "taxa_type",
+               values_to = "count")
+
+# Plot
+ggplot(plot_data, aes(x = site, y = count, fill = taxa_type)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+  geom_text(aes(label = count),
+            position = position_dodge(width = 0.8),
+            vjust = -0.3, size = 3.5) +
+  scale_fill_manual(values = c("species" = "#4472C4", "families" = "#ED7D31")) +
+  labs(x = "Site",
+       y = "no. of taxa",
+       fill = NULL) +
+  theme_minimal(base_size = 13) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+    panel.grid = element_blank(),
+    legend.position = "top"
+  )
+
+## test for significance
+rich_abun <- data.frame(
+  sites = c("FEH-4184-3", "YAR-3637-7", "BNY-2904-2", "UYT-199-3", "WMI-232-0",
+            "FER-647-5", "GRD-7562-0", "TOO-4270-0", "DNG-31881-3", "DNG-7957-4"),
+  families = c(44, 46, 38, 43, 37, 26, 18, 23, 23, 24),
+  species = c(119, 110, 96, 100, 82, 49, 45, 52, 54, 65),
+  richness = c("high", "high", "high", "high", "high", "low", "low", "low", "low", "low"),
+  abundance = c("high", "high", "low", "low", "low", "high", "high", "high", "low", "low")
+)
+
+t.test(families ~ richness, data = rich_abun)
+t.test(families ~ abundance, data = rich_abun)
+
+t.test(species ~ richness, data = rich_abun)
+t.test(species ~ abundance, data = rich_abun)
+
+# Two-way ANOVA for families
+anova_fam <- aov(families ~ richness * abundance, data = rich_abun)
+summary(anova_fam)
+
+# Two-way ANOVA for species
+anova_sp <- aov(species ~ richness * abundance, data = rich_abun)
+summary(anova_sp)
+
+
+ggplot(rich_abun, aes(x=richness, y=families, fill=abundance)) +
+  geom_boxplot() +
+  labs(y="Number of families", x="Richness") +
+  scale_fill_manual(values=c("low"="skyblue","high"="salmon"))
+```
+
+
+```{r}
+library(ggplot2)
+
+ggplot(your_data, aes(x=richness, y=families)) +
+  geom_boxplot() +
+  geom_jitter(width=0.1)
+
+ggplot(your_data, aes(x=abundance, y=families)) +
+  geom_boxplot() +
+  geom_jitter(width=0.1)
+
+ggplot(your_data, aes(x=richness, y=species)) +
+  geom_boxplot() +
+  geom_jitter(width=0.1)
+
+ggplot(your_data, aes(x=abundance, y=species)) +
+  geom_boxplot() +
+  geom_jitter(width=0.1)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# filter to >=97% identity
+metab_filt_macro97 <- metab_filt_macro %>% 
+  filter(max_p_identity >= 97)
+
+# Step A: species richness per site × per (what you already had)
+site_per_totals <- metab_filt_macro97 %>%
+  group_by(site, per) %>%
+  summarise(
+    total_species = n_distinct(species),
+    .groups = "drop"
+  )
+
+# Step B: total species per site across all periods (site-level total)
+site_totals <- metab_filt_macro97 %>%
+  group_by(site) %>%
+  summarise(
+    site_total_species = n_distinct(species),
+    .groups = "drop"
+  )
+
+# Step C: join and compute the desired proportion
+site_sample_prop <- site_per_totals %>%
+  left_join(site_totals, by = "site") %>%
+  mutate(
+    species_prop = total_species / site_total_species
+  )
+
+# Inspect
+print(site_sample_prop)
+
+# ---- Example plot: show distribution of species_prop across periods ----
+ggplot(site_sample_prop, aes(x = factor(per), y = species_prop)) +
+  geom_boxplot(
+    fill = "skyblue",
+    color = "black",
+    width = 0.6,
+    outlier.shape = 19,       # solid black dot
+    outlier.size = 2.5,       # make outlier a bit larger
+    outlier.color = "black"
+  ) +
+  stat_summary(
+    fun = mean,
+    geom = "point",
+    shape = 18,
+    size = 3,
+    color = "red"
+  ) +
+  labs(
+    x = "Period",
+    y = "Proportion of species detected",
+    title = "Mean proportion of macroinvertebrate species detected across 10 sites"
+  ) +
+  theme_bw(base_size = 14) +
+  theme(
+    plot.title = element_text(hjust = 0.5)
+  )
+```
+
+```{r}
+# Load packages
+
+# Step 1: build site_sample × species matrix
+comm_matrix <- metab_filt_macro97 %>%
+  group_by(site, per, species) %>%
+  summarise(abundance = sum(reads), .groups = "drop") %>%
+  pivot_wider(names_from = species, values_from = abundance, values_fill = 0)
+
+# Step 2: species matrix only
+species_mat <- comm_matrix %>%
+  select(-site, -per) %>%
+  as.data.frame()
+
+# Step 3: metadata
+meta <- comm_matrix %>%
+  select(site, per)
+
+# Step 4: CLR transform (pseudocount to avoid log(0))
+species_mat_clr <- clr(species_mat + 1) %>%
+  as.data.frame()
+
+# Step 5: run ordination (Euclidean distance after CLR = Aitchison distance)
+mds <- metaMDS(species_mat_clr, distance = "euclidean", k = 2, trymax = 100)
+
+# Step 6: extract scores
+mds_scores <- as.data.frame(scores(mds, display = "sites"))
+mds_scores <- cbind(meta, mds_scores)
+
+# Step 7: plot with stress in title
+stress_val <- round(mds$stress, 3)
+
+ggplot(mds_scores, aes(x = NMDS1, y = NMDS2, color = site, shape = as.factor(per))) +
+  geom_point(size = 4, alpha = 0.9) +
+  theme_minimal(base_size = 14) +
+  scale_color_brewer(palette = "Paired") +  # nice distinct colors for 10 sites
+  labs(
+    title = paste0("NMDS of Community Structure (CLR + Aitchison) | Stress = ", stress_val),
+    x = "NMDS1",
+    y = "NMDS2",
+    color = "Site",
+    shape = "Percent Dry Weight"
+  ) +
+  theme(
+    legend.position = "right",
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_blank(),
+     panel.border = element_rect(color = "black", fill = NA, linewidth = 1)  # 🔲 adds black border
+  )
+```
+
+```{r}
+# Use the cleaned dataframe for plotting
+plot_df <- site_samp_prop_dw
+
+# Create colour palette for sites
+sites <- data.frame(
+  sitecode = unique(plot_df$site),
+  col = RColorBrewer::brewer.pal(n = length(unique(plot_df$site)), name = "Spectral")
+)
+
+par(mfrow = c(2, 2), mar = c(3.5, 3.5, 1, 0.5))
+
+### ---- PANEL A: Species richness vs subsample proportion ----
+plot(plot_df$subsamp_prpn, plot_df$sp_richness, type = 'n',
+     axes = FALSE, xlab = "", ylab = "")
+axis(1); axis(2, las = 1); box(bty = 'l')
+title(xlab = "Subsample proportion", line = 2)
+title(ylab = "Number of species", line = 2.5)
+title(main = "A.", adj = 0, line = 0)
+
+for(i in 1:nrow(sites)){
+  with(plot_df[plot_df$site == sites$sitecode[i],],
+       points(jitter(subsamp_prpn), jitter(sp_richness),
+              pch = 21, bg = sites$col[i]))
+}
+abline(v = 1, lty = 3)
+
+### ---- PANEL B: Proportion species detected vs subsample proportion ----
+plot(plot_df$subsamp_prpn, plot_df$prpn_totsp, type = 'n',
+     ylim = c(0, 1), axes = FALSE, xlab = "", ylab = "")
+axis(1); axis(2, las = 1); box(bty = 'l')
+title(xlab = "Subsample proportion", line = 2)
+title(ylab = "Proportion species detected", line = 2.5)
+title(main = "B.", adj = 0, line = 0)
+
+for(i in 1:nrow(sites)){
+  df <- plot_df[plot_df$site == sites$sitecode[i], ]
+  lines(df$subsamp_prpn, df$prpn_totsp, col = sites$col[i])
+  points(df$subsamp_prpn, df$prpn_totsp, pch = 21, bg = sites$col[i])
+}
+
+legend("bottomright", legend = sites$sitecode,
+       pt.bg = sites$col, pch = 21, cex = 0.8, bty = "n")
+abline(h = c(0.88, 0.99), v = 0.3, lty = 3)
+
+### ---- PANEL C: Species richness vs dry weight ----
+plot(plot_df$subsamp_dw, plot_df$sp_richness, type = 'n',
+     axes = FALSE, xlab = "", ylab = "")
+axis(1); axis(2, las = 1); box(bty = 'l')
+title(xlab = "Subsample dry weight (g)", line = 2)
+title(ylab = "Number of species", line = 2.5)
+title(main = "C.", adj = 0, line = 0)
+
+for(i in 1:nrow(sites)){
+  with(plot_df[plot_df$site == sites$sitecode[i],],
+       points(jitter(subsamp_dw), jitter(sp_richness),
+              pch = 21, bg = sites$col[i]))
+}
+
+### ---- PANEL D: Proportion species detected vs dry weight ----
+plot(plot_df$subsamp_dw, plot_df$prpn_totsp, type = 'n',
+     ylim = c(0, 1), axes = FALSE, xlab = "", ylab = "")
+axis(1); axis(2, las = 1); box(bty = 'l')
+title(xlab = "Subsample dry weight (g)", line = 2)
+title(ylab = "Proportion species detected", line = 2.5)
+title(main = "D.", adj = 0, line = 0)
+
+for(i in 1:nrow(sites)){
+  df <- plot_df[plot_df$site == sites$sitecode[i], ]
+  lines(df$subsamp_dw, df$prpn_totsp, col = sites$col[i])
+  points(df$subsamp_dw, df$prpn_totsp, pch = 21, bg = sites$col[i])
+}
+```
+```{r}
+library(dplyr)
+library(RColorBrewer)
+library(scales)
+library(boot)   # for inv.logit
+library(rstan)  # for extracting posterior
+
+# ---- 1. Clean site data and compute subsamp_dw ----
+# Clean site names in site_dw
+site_dw <- site_dw %>% mutate(site = gsub("-", "", site))
+
+# Clean site_sample_prop
+site_samp_prop_dw <- site_sample_prop %>%
+  rename(
+    subsamp_prpn = per,
+    sp_richness = total_species,
+    prpn_totsp = species_prop
+  ) %>%
+  mutate(subsamp_prpn = subsamp_prpn / 100) %>%
+  left_join(site_dw, by = "site") %>%
+  mutate(
+    subsamp_dw = case_when(
+      subsamp_prpn == 0.1 ~ dw10,
+      subsamp_prpn == 0.2 ~ dw20,
+      subsamp_prpn == 0.3 ~ dw30,
+      subsamp_prpn == 0.4 ~ dw40,
+      TRUE ~ NA_real_
+    )
+  ) %>%
+  select(site, subsamp_prpn, subsamp_dw, sp_richness, prpn_totsp)
+
+# ---- 2. Set up plotting colours for sites ----
+sites <- data.frame(
+  sitecode = unique(site_samp_prop_dw$site),
+  col = brewer.pal(n = length(unique(site_samp_prop_dw$site)), name = "Spectral")
+)
+
+# ---- 3. Posterior predictions for species accumulation (0.1 increments) ----
+predict_ssppn <- seq(0.1, 0.9, 0.1)   # subsample proportions
+
+# Scale according to model input
+predict_ssppn_scaled <- as.vector(scale(
+  predict_ssppn,
+  center = attributes(ss_scaled)$`scaled:center`,
+  scale  = attributes(ss_scaled)$`scaled:scale`
+))
+
+# Prediction set for all sites
+n_sites <- length(unique(site_samp_prop_dw$site))
+predict_set <- list(
+  site = rep(1:n_sites, each = length(predict_ssppn_scaled)),
+  x = rep(predict_ssppn_scaled, n_sites)
+)
+
+# Extract posterior
+post_ss <- rstan::extract(fit_ssppn, pars = c("a","b"))
+
+# Compute posterior predictions
+predict_post <- vector("list", length = length(predict_set$x))
+for(i in 1:length(predict_set$x)){
+  predict_post[[i]] <- numeric(nrow(post_ss$a))
+}
+
+for(i in 1:nrow(post_ss$a)){
+  for(j in 1:length(predict_set$x)){
+    predict_post[[j]][i] <- boot::inv.logit(
+      post_ss$a[i, predict_set$site[j]] + 
+      post_ss$b[i, predict_set$site[j]] * predict_set$x[j]
+    )
+  }
+}
+
+# Store predictions in dataframe
+predictions_ss <- data.frame(
+  site_no = predict_set$site,
+  x = predict_set$x
+)
+
+predictions_ss$ss <- predictions_ss$x * attributes(ss_scaled)$`scaled:scale` + 
+                     attributes(ss_scaled)$`scaled:center`
+
+# Map site numbers to site codes
+predictions_ss$site <- tot_spp$site[match(predictions_ss$site_no, 1:n_sites)]
+
+# Compute posterior summaries
+predictions_ss$p_mean <- sapply(predict_post, mean)
+predictions_ss$p_025  <- sapply(predict_post, quantile, probs = 0.005)
+predictions_ss$p_975  <- sapply(predict_post, quantile, probs = 0.995)
+
+# ---- 4. Site slopes summary ----
+site_slopes <- data.frame(
+  class_code = sites$class_code,
+  b_ss_mean = apply(post_ss$b, 2, mean),
+  b_ss_025  = apply(post_ss$b, 2, quantile, probs = 0.025),
+  b_ss_975  = apply(post_ss$b, 2, quantile, probs = 0.975)
+)
+
+```
+

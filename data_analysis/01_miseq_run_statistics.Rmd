@@ -26,13 +26,12 @@ library(dplyr)
 library(vegan)
 ```
 
-
 ```{r}
 # input unflitered metabarcoding data with final taxonomy
-metab_fil <- read.csv("~/git/ten_site_metabarcoding/metabarcoding_workflow/results/ten_site_data_summaries/ten_sites_vsearch_data_summary_filled_long_format_09_11_2025.csv")
+metab_fil <- read.csv("~/git/ten_site_metabarcoding/results/ten_site_data_summaries/ten_sites_vsearch_data_summary_filled_long_format_10_11_2025.csv")
 
 # input  finL flitered metabarcoding data     
-metab_filt <- read.csv("~/git/ten_site_metabarcoding/metabarcoding_workflow/results/ten_site_data_summaries/ten_sites_long_format_09_11_2025.csv")
+metab_filt <- read.csv("~/git/ten_site_metabarcoding/results/ten_site_data_summaries/ten_sites_long_format_10_11_2025.csv")
 ```
 
 
@@ -42,62 +41,72 @@ metab_filt <- read.csv("~/git/ten_site_metabarcoding/metabarcoding_workflow/resu
  
 # reads per sample per replicate
 ```{r}
-# create a table of reads for each PCR replicate for each sample and totals unfilitered
+# Create table of reads for each PCR replicate for each sample (unfiltered)
 metab_fil_reads <- metab_fil %>%
-  dplyr::group_by(site_per, replicate) %>%
-  summarise(reads = sum(reads))
+  dplyr::group_by(site, per, replicate) %>%   # include site here
+  summarise(reads = sum(reads), .groups = "drop")
 
-metab_fil_reads_tab <- spread(metab_fil_reads, key = replicate, value = reads)
+metab_fil_reads_tab <- tidyr::spread(metab_fil_reads, key = replicate, value = reads)
 
-# create a table of reads for each PCR replicate for each sample and total
+# Create table of reads for each PCR replicate for each sample (filtered)
 metab_filt_reads <- metab_filt %>%
-  dplyr::group_by(site_per, replicate) %>%
-  summarise(reads = sum(reads))
+  dplyr::group_by(site, per, replicate) %>%   # include site here too
+  summarise(reads = sum(reads), .groups = "drop")
 
-metab_filt_reads_tab <- spread(metab_filt_reads, key = replicate, value = reads)
+metab_filt_reads_tab <- tidyr::spread(metab_filt_reads, key = replicate, value = reads)
 
-# add total reads
-metab_fil_reads_tab$total <- metab_fil_reads_tab$rep1 + metab_fil_reads_tab$rep2
+# Add total reads
+metab_fil_reads_tab <- metab_fil_reads_tab %>%
+  mutate(total = rep1 + rep2)
 
-# add total reads
-metab_filt_reads_tab$total <-metab_filt_reads_tab$rep1 + metab_filt_reads_tab$rep2
+metab_filt_reads_tab <- metab_filt_reads_tab %>%
+  mutate(total = rep1 + rep2)
 
-# report minimums in data
-lowest_total_reads <- min(metab_fil_reads_tab$total)
-
+# Report minimums
+lowest_total_reads <- min(metab_fil_reads_tab$total, na.rm = TRUE)
 lowest_rep_reads <- pmin(metab_fil_reads_tab$rep1, metab_fil_reads_tab$rep2, na.rm = TRUE)
 overall_lowest_rep_reads <- min(lowest_rep_reads, na.rm = TRUE)
 
+# Rename columns for the final supplementary table
+metab_fil_reads_tab <- metab_fil_reads_tab %>%
+  rename(
+    `PCR replicate 1` = rep1,
+    `PCR replicate 2` = rep2
+  )
 
-
-# rename columns for final supp table
-names(metab_fil_reads_tab)[names(metab_fil_reads_tab) == "smpcode"] <- "sample code"
-names(metab_fil_reads_tab)[names(metab_fil_reads_tab) == "rep1"] <- "PCR replicate 1"
-names(metab_fil_reads_tab)[names(metab_fil_reads_tab) == "rep2"] <- "PCR replicate 2"
-
-
-# Create the directory (with recursive = TRUE to make parent folders if needed)
+# Create output directory if needed
 dir.create(
-  here::here("data_analysis/miseq_tables_figs/run_stats"),
+  here::here("data_analysis/run_stats"),
   recursive = TRUE,
   showWarnings = FALSE
 )
 
-# Write the Excel file
+# Write Excel file
 writexl::write_xlsx(
   metab_fil_reads_tab,
-  path = here::here("data_analysis/miseq_tables_figs/run_stats/DNA_metabarcoding_reads_summary.xlsx")
+  path = here::here("data_analysis/run_stats/DNA_metabarcoding_reads_summary.xlsx")
 )
 
+total_reads_overall_fil <- sum(metab_fil_reads_tab$total, na.rm = TRUE)
+print(paste("total_reads_overall_filtered =", total_reads_overall_fil))
+
+# Print summary info
 print(paste("lowest_total_reads =", lowest_total_reads))
 print(paste("overall_lowest_rep_reads =", overall_lowest_rep_reads))
 
 ```
+
 # rarefaction both amplicons
 ```{r}
+# create directory to store results
+dir.create(
+  here::here("data_analysis/rarefaction_plots/"),
+  recursive = TRUE,
+  showWarnings = FALSE
+)
 # Read the CSV (note: escape the space in the filename)
 metab_data_wide <- read.csv(
-  "~/git/ten_site_metabarcoding/metabarcoding_workflow/results/ten_site_data_summaries/ten_sites_vsearch_data_summary_filled_09_11_2025.csv"
+  "~/git/ten_site_metabarcoding/results/ten_site_data_summaries/ten_sites_vsearch_data_summary_filled_10_11_2025.csv"
 )
 
 # Select only asv_code and the desired columns
@@ -217,11 +226,6 @@ dev.off()
 
 # rarefaction short amplicon
 ```{r}
-# Read the CSV
-metab_data_wide <- read.csv(
-  "~/git/ten_site_metabarcoding/metabarcoding_workflow/results/ten_site_data_summaries/ten_sites_vsearch_data_summary_filled_09_11_2025.csv"
-)
-
 # Filter only short amplicon rows
 metab_data_wide_s <- metab_data_wide %>%
   filter(amplicon == "short")
@@ -242,7 +246,7 @@ summary(sample_sums_s)
 hist(sample_sums_s, main = "Read depth per sample", xlab = "Number of reads")
 
 # Set rarefaction depth
-rarefaction_depth <- 10000  
+rarefaction_depth <- 20000  
 
 # Rarefy
 asv_rarefied_s <- rrarefy(t(asv_mat_s), sample = rarefaction_depth)
@@ -331,13 +335,9 @@ box(lwd = 2, col = "black")  # optional border
 
 dev.off()
 ```
+
 # rarefaction right amplicon
 ```{r}
-# Read the CSV
-metab_data_wide <- read.csv(
-  "~/git/ten_site_metabarcoding/metabarcoding_workflow/results/ten_site_data_summaries/ten_sites_vsearch_data_summary_filled_09_11_2025.csv"
-)
-
 # Filter only short amplicon rows
 metab_data_wide_r <- metab_data_wide %>%
   filter(amplicon == "right")
@@ -408,7 +408,6 @@ box(bty = "l")
 abline(v = rarefaction_depth, col = "red", lty = 2)
 ```
 
-
 # saved version rarefaction right amplicon
 ```{r}
 # Open PNG device
@@ -448,6 +447,7 @@ box(lwd = 2, col = "black")  # optional border
 
 dev.off()
 ```
+
 # comparing overlap between replicates for ASV on unfiterrd data
 ```{r}
 # create a table of reads for each asv
@@ -470,7 +470,8 @@ asv_percentage_overlap <- count_both_values / total_asv *100
 
 print(paste("~/git/ten_site_metabarcoding/data_analysis/run_stats/asv_percentage_overlap_btn_PCR_replicates =",asv_percentage_overlap))
 ```
-# comparing overlap between replicates for ASV on unfiterrd data
+
+# comparing overlap between replicates for ASV on fitered data
 ```{r}
 # create a table of reads for each asv
 metab_asv <- metab_filt %>%
@@ -549,7 +550,7 @@ rm(metabar_sp_rep)
 print(paste("species_percentage_overlap_btn_PCR_replicates_filtered =",sp_percentage_overlap))
 ```
 
-# How many sequences and ASVs were assigned to speices
+# How many sequences and ASVs were assigned to species
 ```{r}
 # total number of ASVs
 num_asv <- length(unique(metab_filt$asv_code))
@@ -561,7 +562,7 @@ short_asv_reads <- sum(short_asv$reads)
 
 #right amplicon (mICOIintF/dgHCO2198) ASV's 
 right_asv <- metab_filt[metab_filt$amplicon == "right", ]
-uni_right <- length(unique(right_asv$otu_id))
+uni_right <- length(unique(right_asv$asv_code))
 right_asv_reads <- sum(right_asv$reads)
 
 # total number of ASVs with species identifications
@@ -593,6 +594,6 @@ print(paste("Total_no_of_ASVs_right amplicon_(mICOIintF/dgHCO2198)  =", uni_righ
 print(paste("Total_no_of_reads_right amplicon_(mICOIintF/dgHCO2198)  =", right_asv_reads))
 print(paste("percentage_asv_id_to_species =", percentage_asv_id))
 print(paste("percentage of reads with species identifications", percentage_sp_ids))
-print(paste("no. of species = ", raw_sp_count))
-print(paste("no. of family = ", raw_fam_count))
+print(paste("no. of species = ", sp_count))
+print(paste("no. of family = ", fam_count))
 ```

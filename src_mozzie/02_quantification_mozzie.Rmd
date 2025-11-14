@@ -421,6 +421,14 @@ paged_table(read_qza(here("results/dada2/short_denoising_stats.qza"))$data)
 ```{r}
 paged_table(read_qza(here("results/dada2/right_denoising_stats.qza"))$data)
 ```
+```{r}
+# save deinosing statistics
+short_denoising_stats <- read_qza(here("results/dada2/short_denoising_stats.qza"))$data
+write.csv(trim_stats_df,file.path(statistics_dir, "short_denoising_stats.csv"), row.names = FALSE)
+
+right_denoising_stats <- read_qza(here("results/dada2/right_denoising_stats.qza"))$data
+write.csv(trim_stats_df,file.path(statistics_dir, "right_denoising_stats.csv"), row.names = FALSE)
+```
 
 
 -----

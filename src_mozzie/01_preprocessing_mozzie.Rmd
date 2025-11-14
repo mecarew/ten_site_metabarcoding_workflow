@@ -43,10 +43,10 @@ The first thing we'll do is set the directory that stores the workflow outputs.
 ```{r}
 # You can use the here::here function to define a path relative to the project 
 #  directory or use an absolute path
-results_dir <- here::here("metabarcodong_workflow/results")
+results_dir <- here::here("results")
 
 # Log files will be stored inside the logs directory inside the results directory
-logs_dir <- file.path(results_dir, "metabarcodong_workflow/logs")
+logs_dir <- file.path(results_dir, "logs")
 ```
 
 The outputs of this workflow will be stored in:  
@@ -60,8 +60,8 @@ that uses it.
 use_slurm <- TRUE
 
 # Settings for slurm (you can ignore these if `use_slurm` is set to FALSE)
-slurm_conffile <- here::here("metabarcoding_workflow/src_mozzie/.batchtools.conf.R")
-slurm_template <- here::here("metabarcoding_workflow/src_mozzie/batchtools.slurm.tmpl")
+slurm_conffile <- here::here("src_mozzie/.batchtools.conf.R")
+slurm_template <- here::here("src_mozzie/batchtools.slurm.tmpl")
 slurm_resources <- list(partition="main", ntasks=1, ncpus=1, memory=4096)
 slurm_n_jobs <- 10
 ```
@@ -159,7 +159,7 @@ A file containing sample information is required. We'll read in `data/metadata/s
 - `factor`: a factor of interest for your dataset (if you don't have a factor of interest, you can set the values as the same as the sample name)
 
 ```{r}
-samples_df <- read.table(here::here("metabarcoding_workflow/data/metadata/samples.tsv"), header=TRUE, stringsAsFactors=FALSE)
+samples_df <- read.table(here::here("data/metadata/samples.tsv"), header=TRUE, stringsAsFactors=FALSE)
 paged_table(samples_df)
 ```
 
@@ -605,6 +605,12 @@ The columns in the above table refer to:
 - `total_input_bp`: the number of base pairs that were processed
 - `total_output_bp`: the number of base pairs that passed after trimming
 
+```{r}
+# save cutadapt stats for record
+statistics_dir <- file.path(results_dir, "statistics")
+mkdir(statistics_dir)
+write.csv(trim_stats_df,file.path(statistics_dir, "cutadapt_statistics.csv"), row.names = FALSE)
+```
 
 -----
 
@@ -848,6 +854,14 @@ for (amplicon_group in amplicon_groups) {
   print(g_forward)
   print(g_reverse)
 }
+```
+```{r}
+# Save the plots
+ggsave(file.path(statistics_dir, paste0("forward_", amplicon_group, "_quality.png")),
+       plot = g_forward, width = 8, height = 6, dpi = 300)
+
+ggsave(file.path(statistics_dir, paste0("reverse_", amplicon_group, "_quality.png")),
+       plot = g_reverse, width = 8, height = 6, dpi = 300)
 ```
 
 If you want to view an individual sample's sequence base quality boxplot, you can view the sample's qzv file located in:
