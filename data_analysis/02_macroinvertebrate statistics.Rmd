@@ -19,6 +19,7 @@ library(tidyr)
 ```
 
 ```{r}
+# set directory 
 
 # add bug codes to dna data
 fambc <- read.csv(here::here("data/family_bugcodes.csv"))
@@ -46,46 +47,22 @@ metab_filt <- metab_filt %>%
 
 # move data with bug codes into a new df
 metab_filt_macro <- metab_filt %>%
-  filter(!is.na(shortcode)) 
+  filter(!is.na(shortcode))
 
-# # separate out chironomids
-# metab_filt_chir <- metab_filt %>% filter(family == "Chironomidae")  %>%
-#   select(-shortcode) #17183
+# trucate code to bioassessment levels
+metab_filt_macro_bio <- metab_filt_macro %>%
+   mutate(shortcode = case_when(
+    str_starts(shortcode, "MO") ~ "MM",
+    str_starts(shortcode, "MP") ~ "MM",
+    str_starts(shortcode, "LO") ~ "LO",
+    TRUE ~ shortcode
+  ))
 
-# metab_filt_chirbc <- metab_filt_chir %>%
-#   left_join(chirbc %>% select(genus, shortcode), by = "genus") %>% 
-#   mutate(
-#     shortcode = case_when(
-#       str_detect(species, "Podonominae") ~ "QDAD",
-#       str_detect(species, "Aphroteniinae") ~ "QDAA",
-#       str_detect(species, "Diamesinae") ~ "QDAB",
-#       str_detect(species, "Tanypodinae") ~ "QDAE",
-#       str_detect(species, "Orthocladiinae") ~ "QDAF",
-#       str_detect(species, "Chironominae") ~ "QDAJ",
-#       str_detect(species, "Tanytarsini") ~ "QDAJ",
-#       str_detect(species, "Chironomidae") ~ "QDAZ",
-#       TRUE ~ shortcode
-#     ),
-#     shortcode = ifelse(
-#       family == "Chironomidae" & (is.na(species) | trimws(species) == ""),
-#       "QDAZ",
-#       shortcode
-#     ),
-#     family = case_when(
-#       shortcode == "QDAZ" ~ "Aphroteniinae",
-#       shortcode == "QDAZ" ~ "Diamesinae",
-#       shortcode == "QDAZ" ~ "Podonominae",
-#       shortcode == "QDAZ" ~ "Tanypodinae",
-#       shortcode == "QDAZ" ~ "Orthocladiinae",
-#       shortcode == "QDAZ" ~ "Chironominae",
-#       TRUE ~ family
-#     )
-#   )
-# 
-# metab_filt_macro <- rbind(metab_filt_bc, metab_filt_chirbc) # 
 
 no_bc <- metab_filt %>%
   anti_join(metab_filt_macro, by = "shortcode") #
+
+write.csv(metab_filt_macro, here::here("data_analysis/macro_data/ten_site_metaber_macro.csv"))
 ```
 
 # How many sequences and ASVs were assigned to species
@@ -182,13 +159,12 @@ write.csv(morph_sum, "~/git/ten_site_metabarcoding/data_analysis/morph_table/ten
 ```
 
 ```{r}
-
 missing_pairs_morph50 <- morph50 %>%
   filter(!is.na(shortcode), shortcode != "") %>%
   select(site, shortcode, family) %>%
   distinct() %>%   # <-- removes exact duplicates
   anti_join(
-    metab_filt_macro %>%
+    metab_filt_macro_bio %>%
       select(site, shortcode) %>%
       distinct(),
     by = c("site", "shortcode")
@@ -199,12 +175,11 @@ missing_pairs_morph50
 ```
 
 ```{r}
-
 missing_pairs_morph_larg <- morph_larg %>%
   filter(!is.na(shortcode), shortcode != "") %>%  # ignore blank or missing shortcodes
   select(site, shortcode, family) %>%
   anti_join(
-    metab_filt_macro %>%
+    metab_filt_macro_bio %>%
       select(site, shortcode) %>%
       distinct(),
     by = c("site", "shortcode")
@@ -214,9 +189,7 @@ missing_pairs_morph_larg <- morph_larg %>%
 missing_pairs_morph_larg
 ```
 
-
-
-
+Classify all taxa found in run into common name groups
 ```{r}
 # assigning common group names
 
@@ -289,6 +262,8 @@ asv_reads_grp_sum
 
 write.csv(asv_reads_grp_sum, "~/git/ten_site_metabarcoding/data_analysis/pie charts/asv_reads_grp_sum.csv")
 ```
+
+
 ```{r}
 # Load packages
 library(ggplot2)
@@ -649,12 +624,14 @@ for(i in 1:nrow(sites)){
   points(df$subsamp_dw, df$prpn_totsp, pch = 21, bg = sites$col[i])
 }
 ```
+
+
 ```{r}
 library(dplyr)
 library(RColorBrewer)
 library(scales)
 library(boot)   # for inv.logit
-library(rstan)  # for extracting posterior
+#library(rstan)  # for extracting posterior
 
 # ---- 1. Clean site data and compute subsamp_dw ----
 # Clean site names in site_dw

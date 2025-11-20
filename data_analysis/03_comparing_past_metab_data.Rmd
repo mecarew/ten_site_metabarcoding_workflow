@@ -1,0 +1,393 @@
+---
+title: "Comparsion to past data"
+author: "Melissa Carew"
+date: "18/11/2025"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# load libraries
+library(dplyr)
+library(tidyverse)
+library(tidyr)
+library(vegan)
+library(ggplot2)
+library(compositions)
+```
+
+Comparing past data to metabarcoding data.
+
+```{r}
+# set directory path
+dir <- "~/git/ten_site_metabarcoding/"
+
+# read in past site data
+past_macros <- read.csv(paste0(dir, "data/ten_site_past_data.csv"))
+
+# remove non-macroinvertbrates
+remove_codes <- c(
+  "OP","QO","OJ","QC","QA","OG04","QD","QA02","QE","QL","II",
+  "QP","QA01","QA04","QT","ZD")
+
+# pull out autumn data
+# past_macros <- past_macros %>%
+#   dplyr::filter(!shortcode %in% remove_codes) %>%
+#   dplyr::filter(season == "autumn")
+
+past_macros <- past_macros %>%
+  dplyr::filter(!shortcode %in% remove_codes) %>%
+  dplyr::filter(season == "spring")%>%                 # keep only spring samples
+  dplyr::filter(year >= 2015 & year <= 2020)           # keep years 2015 to 2020
+```
+
+
+```{r}
+# read in metabarcoding data
+metab_filt <- read.csv(paste0(dir,"results/ten_site_data_summaries/ten_sites_long_format_11_11_2025.csv")) %>%
+  mutate(year = 2021)
+
+# read in bioassessment codes
+biobc <-  read.csv(paste0(dir,"data/bioassessment_bugcodes.csv"))
+
+# read in chironomid sub family codes
+chirbc <-  read.csv(paste0(dir,"data/chiro_bugcodes.csv"))
+
+# add familiy level codes to DNA data
+dna <- metab_filt %>%
+  left_join(biobc %>% select(family, shortcode), by = "family") %>% 
+  mutate(
+    shortcode = case_when(
+      genus  == "Ferrissia"   ~ "KG06",
+      class  == "Turbellaria" ~ "IF",
+      phylum == "Nemertea"    ~ "IH",
+      family == "Podonominae" ~ "QDAD",
+      TRUE                    ~ shortcode   # keep existing shortcode
+    )
+  )
+
+# move data with bug codes into a new df
+dna_bc <- dna %>%
+  filter(!is.na(shortcode)) #9592
+
+# separate out chironomids
+dna_chir <- dna %>% filter(family == "Chironomidae")  %>%
+  select(-shortcode) #17183
+
+dna_chirbc <- dna_chir %>%
+  left_join(chirbc %>% select(genus, shortcode), by = "genus") %>% 
+  mutate(
+    shortcode = case_when(
+      str_detect(species, "Podonominae") ~ "QDAD",
+      str_detect(species, "Aphroteniinae") ~ "QDAA",
+      str_detect(species, "Diamesinae") ~ "QDAB",
+      str_detect(species, "Tanypodinae") ~ "QDAE",
+      str_detect(species, "Orthocladiinae") ~ "QDAF",
+      str_detect(species, "Chironominae") ~ "QDAJ",
+      str_detect(species, "Tanytarsini") ~ "QDAJ",
+      str_detect(species, "Chironomidae") ~ "QDAZ",
+      TRUE ~ shortcode
+    ),
+    shortcode = ifelse(
+      family == "Chironomidae" & (is.na(species) | trimws(species) == ""),
+      "QDAZ",
+      shortcode
+    ),
+    family = case_when(
+      shortcode == "QDAA" ~ "Aphroteniinae",
+      shortcode == "QDAB" ~ "Diamesinae",
+      shortcode == "QDAD" ~ "Podonominae",
+      shortcode == "QDAE" ~ "Tanypodinae",
+      shortcode == "QDAF" ~ "Orthocladiinae",
+      shortcode == "QDAJ" ~ "Chironominae",
+      TRUE ~ family
+    )
+  )
+
+dna_macro <- rbind(dna_bc, dna_chirbc) %>% 
+  mutate(
+    site = case_when(
+      site == "FEH41843"  ~ "FEH-4184-3",
+      site == "YAR36377"  ~ "YAR-3637-7",
+      site == "BNY29042"  ~ "BNY-2904-2",
+      site == "UYT1993"   ~ "UYT-199-3",
+      site == "WMI2320"   ~ "WMI-232-0",
+      site == "FER6475"   ~ "FER-647-5",
+      site == "GRD75620"  ~ "GRD-7562-0",
+      site == "TOO42700"  ~ "TOO-4270-0",
+      site == "DNG318813" ~ "DNG-31881-3",
+      site == "DNG79574"  ~ "DNG-7957-4",
+      TRUE ~ site  # keep all others unchanged
+    )
+  )
+ 
+no_bc <- dna %>%
+  anti_join(dna_macro, by = "asv_code") #11672
+```
+
+
+# plot comparing community structure
+```{r}
+# create presence/absence dataframes
+past_pa <- past_macros %>%
+  group_by(site, shortcode, year) %>%
+  summarise(present = 1, .groups = "drop")
+
+
+meta_pa <- dna_macro %>%
+  group_by(site, shortcode, year) %>%
+  summarise(present = 1, .groups = "drop")
+
+# -------------------------------------------------------------
+# STEP 0: Prepare long-format data
+# -------------------------------------------------------------
+
+# DNA: one per site
+dna_long <- meta_pa %>%
+  mutate(treatment = "DNA",
+         sample_id = paste0(site, "_DNA"))
+
+# Morph: multiple per site (different years)
+morph_long <- past_pa %>%
+  mutate(treatment = "Morph",
+         sample_id = paste0(site, "_", year))
+
+# Combine
+all_pa <- bind_rows(dna_long, morph_long)
+
+# -------------------------------------------------------------
+# STEP 1: Build sample × species matrix (presence/absence)
+# -------------------------------------------------------------
+
+comm_matrix <- all_pa %>%
+  group_by(site, treatment, sample_id, shortcode) %>%
+  summarise(present = max(present), .groups = "drop") %>%  # collapse duplicates
+  pivot_wider(
+    names_from = shortcode,
+    values_from = present,
+    values_fill = 0
+  )
+
+# -------------------------------------------------------------
+# STEP 2: Species matrix only
+# -------------------------------------------------------------
+
+species_mat <- comm_matrix %>%
+  select(-site, -treatment, -sample_id) %>%
+  as.data.frame()
+
+# -------------------------------------------------------------
+# STEP 3: Metadata
+# -------------------------------------------------------------
+
+meta <- comm_matrix %>%
+  select(site, treatment, sample_id)
+
+# -------------------------------------------------------------
+# STEP 4: CLR transform (add pseudocount to avoid log(0))
+# -------------------------------------------------------------
+
+species_clr <- clr(species_mat + 1) %>%
+  as.data.frame()
+
+# -------------------------------------------------------------
+# STEP 5: NMDS (Euclidean on CLR = Aitchison distance)
+# -------------------------------------------------------------
+
+set.seed(123)
+nmds <- metaMDS(species_clr, distance = "euclidean", k = 2, trymax = 100)
+
+# -------------------------------------------------------------
+# STEP 6: Extract site/sample scores
+# -------------------------------------------------------------
+
+scores_df <- as.data.frame(scores(nmds, display = "sites"))
+scores_df <- cbind(meta, scores_df)
+
+stress_val <- round(nmds$stress, 3)
+
+# -------------------------------------------------------------
+# STEP 7: Plot NMDS
+# -------------------------------------------------------------
+
+site_shapes <- 0:9  # 10 distinct shapes for 10 sites
+
+nmds_plot <- ggplot(scores_df, aes(NMDS1, NMDS2, color = treatment, shape = site)) +
+  geom_point(size = 4) +
+  scale_shape_manual(values = site_shapes) +
+  theme_minimal() +
+  labs(
+    title = paste0("NMDS of DNA vs Morphology Identification | Stress = ", stress_val),
+    x = "NMDS1",
+    y = "NMDS2",
+    color = "Identifcation",
+    shape = "Site"
+  )
+#-------------------------------------------------------------
+# Save as PNG
+ggsave(
+  filename = "NMDS_DNA_vs_Morph.png",  # file name
+  plot = nmds_plot,                    # the plot object
+  width = 8,                           # width in inches
+  height = 6,                          # height in inches
+  dpi = 300                             # resolution
+)
+
+# Optional: save as PDF
+ggsave(
+  filename = "NMDS_DNA_vs_Morph.pdf",
+  plot = nmds_plot,
+  width = 8,
+  height = 6
+)
+```
+
+
+```{r}
+# -------------------------------------------------------------
+# STEP 0: Create presence/absence dataframes (no year)
+# -------------------------------------------------------------
+
+past_pa <- past_macros %>%
+  group_by(site, shortcode) %>%
+  summarise(present = 1, .groups = "drop")
+
+meta_pa <- dna_macro %>%
+  group_by(site, shortcode) %>%
+  summarise(present = 1, .groups = "drop")
+
+# -------------------------------------------------------------
+# STEP 1: Prepare long-format data
+# -------------------------------------------------------------
+
+# DNA: one per site
+dna_long <- meta_pa %>%
+  mutate(treatment = "DNA",
+         sample_id = paste0(site, "_DNA"))
+
+# Morph: one per site (collapsed across years)
+morph_long <- past_pa %>%
+  mutate(treatment = "Morph",
+         sample_id = paste0(site, "_Morph"))
+
+# Combine
+all_pa <- bind_rows(dna_long, morph_long)
+
+# -------------------------------------------------------------
+# STEP 2: Build sample × species matrix (presence/absence)
+# -------------------------------------------------------------
+
+comm_matrix <- all_pa %>%
+  group_by(site, treatment, sample_id, shortcode) %>%
+  summarise(present = max(present), .groups = "drop") %>%  # collapse duplicates
+  pivot_wider(
+    names_from = shortcode,
+    values_from = present,
+    values_fill = 0
+  )
+
+# -------------------------------------------------------------
+# STEP 3: Species matrix only
+# -------------------------------------------------------------
+
+species_mat <- comm_matrix %>%
+  select(-site, -treatment, -sample_id) %>%
+  as.data.frame()
+
+# -------------------------------------------------------------
+# STEP 4: Metadata
+# -------------------------------------------------------------
+
+meta <- comm_matrix %>%
+  select(site, treatment, sample_id)
+
+# -------------------------------------------------------------
+# STEP 5: CLR transform (add pseudocount to avoid log(0))
+# -------------------------------------------------------------
+
+species_clr <- clr(species_mat + 1) %>%
+  as.data.frame()
+
+# -------------------------------------------------------------
+# STEP 6: NMDS (Euclidean on CLR = Aitchison distance)
+# -------------------------------------------------------------
+
+set.seed(123)
+nmds <- metaMDS(species_clr, distance = "euclidean", k = 2, trymax = 100)
+
+# -------------------------------------------------------------
+# STEP 7: Extract site/sample scores
+# -------------------------------------------------------------
+
+scores_df <- as.data.frame(scores(nmds, display = "sites"))
+scores_df <- cbind(meta, scores_df)
+
+stress_val <- round(nmds$stress, 3)
+
+# -------------------------------------------------------------
+# STEP 8: Plot NMDS
+# -------------------------------------------------------------
+
+site_shapes <- 0:9  # 10 distinct shapes for 10 sites
+
+ggplot(scores_df, aes(NMDS1, NMDS2, color = treatment, shape = site)) +
+  geom_point(size = 4) +
+  scale_shape_manual(values = site_shapes) +
+  theme_minimal() +
+  labs(
+    title = paste0("NMDS of DNA vs Morphology Presence/Absence | Stress = ", stress_val),
+    x = "NMDS1",
+    y = "NMDS2",
+    color = "Identification",
+    shape = "Site"
+  )
+
+```
+
+                                         
+
+```{r}
+# Shortcodes in Morph (past_pa)
+morph_shortcodes <- unique(past_pa$shortcode)
+
+# Shortcodes in DNA (meta_pa)
+dna_shortcodes <- unique(meta_pa$shortcode)
+
+# Shortcodes only in Morph
+unique_to_morph <- setdiff(morph_shortcodes, dna_shortcodes)
+
+# Shortcodes only in DNA
+unique_to_dna <- setdiff(dna_shortcodes, morph_shortcodes)
+
+# Shortcodes shared by both
+shared_shortcodes <- intersect(morph_shortcodes, dna_shortcodes)
+
+# Display
+length(unique_to_morph)  # how many only in Morph
+length(unique_to_dna)    # how many only in DNA
+length(shared_shortcodes) # how many in both
+
+unique_to_morph
+unique_to_dna
+shared_shortcodes
+
+```
+
+
+
+```{r}
+
+# Keep only unique site-shortcode-family combinations
+unique_codes_long <- dna_macro %>%
+  select(site, shortcode) %>%             # select relevant columns
+  distinct() %>%                          # remove duplicate site-shortcode combinations
+  left_join(biobc %>% select(shortcode, family), by = "shortcode")  # join family
+
+# View the result
+unique_codes_long
+```
+
+
