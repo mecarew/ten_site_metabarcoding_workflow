@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r}
+```{r supress warning}
 # load libraries
 library(tidyverse)
 library(vegan)
@@ -19,12 +19,10 @@ library(tidyr)
 ```
 
 ```{r}
-# set directory 
-
 # add bug codes to dna data
 fambc <- read.csv(here::here("data/family_bugcodes.csv"))
 
-# read in DNA data and algin with full data lables
+# read in DNA data and algin with full data labels (add back in hyphens)
 metab_filt <- read.csv("~/git/ten_site_metabarcoding/results/ten_site_data_summaries/ten_sites_long_format_11_11_2025.csv") %>%
   mutate(
     site = case_when(
@@ -49,7 +47,7 @@ metab_filt <- metab_filt %>%
 metab_filt_macro <- metab_filt %>%
   filter(!is.na(shortcode))
 
-# trucate code to bioassessment levels
+# trucate code to bioassessment levels for taxa not identified to family
 metab_filt_macro_bio <- metab_filt_macro %>%
    mutate(shortcode = case_when(
     str_starts(shortcode, "MO") ~ "MM",
@@ -113,47 +111,47 @@ print(paste("no. of species = ", sp_count))
 print(paste("no. of family = ", fam_count))
 ```
 ```{r}
-# load site and dry wieght data
+# load site and dry weight data
 site_dw <- read.csv(here::here("data/ten_site_dry_weight.csv"))
 
 # Load morphological data files
 morph50 <- read.csv(here::here("data/ten_site_50ml_morph_data.csv"))
 morph_larg <- read.csv(here::here("data/ten_site_large_frac_data.csv"))
 
-morph50_count <- morph50 %>%
+# summarize number of families in 50mls
+morph50_nfam <- morph50 %>%
   group_by(site) %>%
-  summarise(shortcode_count = n_distinct(shortcode))
+  summarise(nfam_50ml = n_distinct(shortcode))
 
-morph50_sum <- morph50 %>%
+# summarize abundance of families in 50mls
+morph50_abund <- morph50 %>%
   group_by(site) %>%
-  summarise(total_abundance = sum(count, na.rm = TRUE))
+  summarise(abundance_50ml = sum(count, na.rm = TRUE))
 
-morph_larg_count <- morph_larg %>%
+# summarise number of families in large fraction
+morph_larg_nfam <- morph_larg %>%
   group_by(site) %>%
-  summarise(shortcode_count = n_distinct(shortcode))
-  
-morph_larg_sum <- morph_larg %>% 
+  summarise(nfam_larfrac = n_distinct(shortcode))
+
+# summarise abundance in large fraction  
+morph_larg_abund <- morph_larg %>% 
   group_by(site) %>%
-  summarise(total_abundance = sum(count, na.rm = TRUE))
+  summarise(abundance_larfrac = sum(count, na.rm = TRUE))
 
 # --- combine all summaries ---
-morph_sum <- morph50_count %>%
-  full_join(morph50_sum, by = "site") %>%
-  full_join(morph_larg_count, by = "site") %>%
-  full_join(morph_larg_sum, by = "site") %>%
+morph_sum <- morph50_nfam %>%
+  full_join(morph50_abund, by = "site") %>%
+  full_join(morph_larg_nfam, by = "site") %>%
+  full_join(morph_larg_abund, by = "site") %>%
   left_join(
     site_dw %>% select(site, rich_class, abund_class),
     by = "site"
-  ) %>% 
-  rename(
-    count_50ml = shortcode_count.x,
-    abundance_50ml = total_abundance.x,
-    count_larfrac = shortcode_count.y,
-    abundance_larfrac = total_abundance.y
   ) %>%
-  select(site, rich_class, abund_class,
-         count_50ml, abundance_50ml,
-         count_larfrac, abundance_larfrac)
+  select(
+    site, rich_class, abund_class,
+    nfam_50ml, abundance_50ml,
+    nfam_larfrac, abundance_larfrac
+  )
 
 write.csv(morph_sum, "~/git/ten_site_metabarcoding/data_analysis/morph_table/ten_site_morph_summary.csv")
 ```
@@ -188,8 +186,30 @@ missing_pairs_morph_larg <- morph_larg %>%
 
 missing_pairs_morph_larg
 ```
+```{r}
+# Step 1: Identify species only in per = 10 per site
+species_only_10_per_site <- metab_filt_macro %>%
+  group_by(site, species) %>%
+  summarize(per_values = list(unique(per)), .groups = "drop") %>%
+  filter(sapply(per_values, function(x) length(x) == 1 && x == 10)) %>%
+  select(site, species)
 
-Classify all taxa found in run into common name groups
+# Step 2: Add shortcode information
+species_only_10_shortcodes <- species_only_10_per_site %>%
+  left_join(metab_filt_macro %>% select(species, shortcode) %>% distinct(),
+            by = "species")
+
+# Step 3: Check if the shortcode is present in morph_larg at the same site
+species_only_10_shortcodes <- species_only_10_shortcodes %>%
+  rowwise() %>%
+  mutate(shortcode_in_morph = shortcode %in% morph_larg$shortcode[morph_larg$site == site]) %>%
+  ungroup()
+
+species_only_10_shortcodes
+
+```
+
+Classify all taxa found in run into common name groups for pie charts
 ```{r}
 # assigning common group names
 
@@ -262,84 +282,63 @@ asv_reads_grp_sum
 
 write.csv(asv_reads_grp_sum, "~/git/ten_site_metabarcoding/data_analysis/pie charts/asv_reads_grp_sum.csv")
 ```
-
-
+# compare abundance to dry wieght
 ```{r}
-# Load packages
-library(ggplot2)
-library(dplyr)
-library(patchwork)
+abund_dw <- morph_sum %>%
+  left_join(site_dw %>% select(site, t_dw), by = "site")
 
-# Helper: format % (>=1 no decimals, <1 one decimal)
-format_perc <- function(x) {
-  ifelse(x >= 1, sprintf("%.0f%%", x), sprintf("%.1f%%", x))
-}
+cor.test(abund_dw$abundance_50ml, abund_dw$t_dw, method = "pearson")
 
-# Prepare data function (compute angles and label positions for pie)
-prep_pie <- function(df, value_col) {
-  df2 <- df %>%
-    mutate(value = .data[[value_col]],
-           perc = value / sum(value) * 100) %>%
-    arrange(desc(perc)) %>%
-    mutate(
-      ymax = cumsum(perc),
-      ymin = ymax - perc,
-      label = format_perc(perc),
-      # midpoint of slice for angle
-      mid = (ymin + ymax)/2,
-      angle = 90 - mid * 360/100,
-      # hjust depends on left/right side of pie
-      hjust = ifelse(angle < -90, 1, 0),
-      angle = ifelse(angle < -90, angle + 180, angle)
-    )
-  return(df2)
-}
+library(tidyverse)
 
-# Prepare both datasets
-asv_df <- prep_pie(asv_reads_grp_sum, "n_asv")
-reads_df <- prep_pie(asv_reads_grp_sum, "total_reads")
+# Your data
+df <- tribble(
+  ~site,          ~richness_class, ~abundance_class, ~abundance, ~dry_weight,
+  "BNY-2904-2",   "high",          "low",            110,        93.1,
+  "DNG-31881-3",  "low",           "low",            136,        13.5,
+  "DNG-7957-4",   "low",           "low",            140,        65.19,
+  "FEH-4184-3",   "high",          "high",           186,        43.8,
+  "FER-647-5",    "low",           "high",           195,        33.9,
+  "GRD-7562-0",   "low",           "high",            60,        13.07,
+  "TOO-4270-0",   "low",           "high",            80,        69.52,
+  "UYT-199-3",    "high",          "low",            159,        72,
+  "WMI-232-0",    "high",          "low",            139,        118,
+  "YAR-3637-7",   "high",          "high",           151,        81.21
+)
 
-# Function to build a pie plot
-make_pie <- function(plot_df, title, show_legend = FALSE) {
-  p <- ggplot(plot_df, aes(x = 1, ymin = ymin, ymax = ymax, xmin = 0, xmax = 1, fill = group)) +
-    geom_rect(color = "white") +
-    coord_polar(theta = "y") +
-    # segment connecting slice to label
-    geom_segment(aes(x = 1, xend = 1.1, y = mid, yend = mid),
-                 inherit.aes = FALSE, size = 0.4, colour = "grey40") +
-    # text labels outside pie
-    geom_text(aes(x = 1.5, y = mid, label = label, angle = angle, hjust = hjust),
-              inherit.aes = FALSE, size = 2) +
-    labs(title = title) +
-    theme_void(base_size = 14) +
-    theme(
-      plot.title = element_text(
-        hjust = 0.5,
-        face = "bold",
-        size = 16,
-        margin = margin(b = 3)   # move title closer to pie
-      ),
-      legend.position = ifelse(show_legend, "right", "none"),
-      legend.title = element_blank(),
-      legend.text = element_text(size = 8),
-      legend.key.size = unit(0.5, "lines"),
-      legend.spacing.y = unit(0.3, "cm"),
-      plot.margin = margin(t = 0, r = 5, b = 5, l = 5)
-    )
-  return(p)
-}
+# -----------------------------
+# 1. Abundance class vs dry weight
+# -----------------------------
+ggplot(df, aes(x = abundance_class, y = dry_weight, fill = abundance_class)) +
+  geom_boxplot(alpha = 0.6) +
+  geom_jitter(width = 0.1) +
+  theme_minimal() +
+  labs(title = "Dry Weight by Abundance Class")
 
-# Build plots
-p_asv <- make_pie(asv_df, "Proportion of ASVs", show_legend = FALSE)
-p_reads <- make_pie(reads_df, "Proportion of Reads", show_legend = TRUE)
 
-# Combine and adjust relative sizes (make pies larger vs legend/title)
-combined <- p_asv + p_reads + plot_layout(widths = c(1.3, 1.4))
+# -----------------------------
+# 2. Abundance vs dry weight
+# -----------------------------
+ggplot(df, aes(x = abundance, y = dry_weight)) +
+  geom_point(size = 3) +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_minimal() +
+  labs(title = "Abundance vs Dry Weight")
 
-# Print
-combined
+
+# -----------------------------
+# 3. Dry weight vs richness (numeric)
+# -----------------------------
+ggplot(df, aes(x = richness_class, y = dry_weight, fill = richness_class)) +
+  geom_boxplot(alpha = 0.6) +
+  geom_jitter(width = 0.1) +
+  theme_minimal() +
+  labs(title = "Dry Weight by Richness Class")
+
+t.test(dry_weight ~ abundance_class, data = df, var.equal = FALSE)
 
 ```
+`
 
 ```{r}
 metab_filt_macro_fam_count <- metab_filt_macro %>%
@@ -356,6 +355,10 @@ metab_filt_macro_summary <- metab_filt_macro %>%
     shortcode_count = n_distinct(shortcode),
     species_count = n_distinct(species)
   )
+
+metab_filt_macro_summary
+
+write.csv(metab_filt_macro_summary, here::here("data_analysis/macro_data/metab_filt_macro_summary.csv"))
 
 # Example: if your df is named metab_filt_macro_summary
 # with columns: site, species_count, shortcode_count
@@ -417,31 +420,9 @@ ggplot(rich_abun, aes(x=richness, y=families, fill=abundance)) +
   scale_fill_manual(values=c("low"="skyblue","high"="salmon"))
 ```
 
+Box plots of the proportion of species found in each subsample
 
 ```{r}
-library(ggplot2)
-
-ggplot(your_data, aes(x=richness, y=families)) +
-  geom_boxplot() +
-  geom_jitter(width=0.1)
-
-ggplot(your_data, aes(x=abundance, y=families)) +
-  geom_boxplot() +
-  geom_jitter(width=0.1)
-
-ggplot(your_data, aes(x=richness, y=species)) +
-  geom_boxplot() +
-  geom_jitter(width=0.1)
-
-ggplot(your_data, aes(x=abundance, y=species)) +
-  geom_boxplot() +
-  geom_jitter(width=0.1)
-```
-
-```{r}
-library(dplyr)
-library(ggplot2)
-
 # filter to >=97% identity
 metab_filt_macro97 <- metab_filt_macro %>% 
   filter(max_p_identity >= 97)
@@ -473,36 +454,135 @@ site_sample_prop <- site_per_totals %>%
 print(site_sample_prop)
 
 # ---- Example plot: show distribution of species_prop across periods ----
-ggplot(site_sample_prop, aes(x = factor(per), y = species_prop)) +
+p <- ggplot(site_sample_prop, aes(x = factor(per), y = species_prop)) +
   geom_boxplot(
-    fill = "skyblue",
+    fill = "lightblue",
     color = "black",
     width = 0.6,
-    outlier.shape = 19,       # solid black dot
-    outlier.size = 2.5,       # make outlier a bit larger
-    outlier.color = "black"
+    #outlier.shape = 19,       # solid black dot
+    #outlier.size = 2.5,       # make outlier a bit larger
+    #outlier.color = "black"
   ) +
   stat_summary(
     fun = mean,
     geom = "point",
     shape = 18,
-    size = 3,
-    color = "red"
+    size = 4,
+    color = "black"
   ) +
   labs(
-    x = "Period",
-    y = "Proportion of species detected",
-    title = "Mean proportion of macroinvertebrate species detected across 10 sites"
+    x = "percentage of sample processed",
+    y = "proportion of species of total detected",
   ) +
-  theme_bw(base_size = 14) +
+  theme_classic(base_size = 14) +   # Start with a clean theme with borders
   theme(
-    plot.title = element_text(hjust = 0.5)
+    panel.background = element_rect(fill = "white", color = "black"),  # white background, black border
+    plot.background = element_rect(fill = "white"),                     # background outside panel
+    plot.title = element_text(hjust = 0.5))
+
+
+# save as PNG
+ggsave(
+  filename = "macro_data/species_proportion_plot.png",
+  plot = p,
+  width = 8,      # inches
+  height = 6,     # inches
+  dpi = 300       # high resolution
+)
+
+print(p)
+```
+REmoving outliers from box plots
+```{r}
+# Step A: Filter to >=97% identity
+metab_filt_macro97 <- metab_filt_macro %>% 
+  filter(max_p_identity >= 97)
+
+# Step B: Species richness per site × per
+site_per_totals <- metab_filt_macro97 %>%
+  group_by(site, per) %>%
+  summarise(
+    total_species = n_distinct(species),
+    .groups = "drop"
   )
+
+# Step C: Total species per site (full site-level richness)
+site_totals <- metab_filt_macro97 %>%
+  group_by(site) %>%
+  summarise(
+    site_total_species = n_distinct(species),
+    .groups = "drop"
+  )
+
+# Step D: Join & compute species proportion
+site_sample_prop <- site_per_totals %>%
+  left_join(site_totals, by = "site") %>%
+  mutate(
+    species_prop = total_species / site_total_species
+  )
+
+
+# ------------------------------------------------------------
+# STEP E: REMOVE OUTLIERS (IQR rule applied *per "per" group*)
+# ------------------------------------------------------------
+remove_outliers <- function(x) {
+  q1 <- quantile(x, 0.25, na.rm = TRUE)
+  q3 <- quantile(x, 0.75, na.rm = TRUE)
+  iqr <- q3 - q1
+  lower <- q1 - 1.5 * iqr
+  upper <- q3 + 1.5 * iqr
+  x >= lower & x <= upper
+}
+
+site_sample_prop_filt <- site_sample_prop %>%
+  group_by(per) %>%
+  filter(remove_outliers(species_prop)) %>%
+  ungroup()
+
+# Inspect result
+print(site_sample_prop_filt)
+
+site_sample_prop_filt
+
+```
+```{r}
+p <- ggplot(site_sample_prop_filt, aes(x = factor(per), y = species_prop)) +
+  geom_boxplot(
+    fill = "lightblue",
+    color = "black",
+    width = 0.6,
+    outlier.shape = NA   # no outliers exist now anyway
+  ) +
+  stat_summary(
+    fun = mean,
+    geom = "point",
+    shape = 18,
+    size = 4,
+    color = "black"
+  ) +
+  labs(
+    x = "percentage of sample processed",
+    y = "proportion of species of total detected"
+  ) +
+theme_classic(base_size = 14) +   # Start with a clean theme with borders
+  theme(
+    panel.background = element_rect(fill = "white", color = "black"),  # white background, black border
+    plot.background = element_rect(fill = "white"),                     # background outside panel
+    plot.title = element_text(hjust = 0.5))
+
+ggsave(
+  filename = "macro_data/species_proportion_plot_no_outliers.png",
+  plot = p,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+
+print(p)
 ```
 
+Community structure across subsamples
 ```{r}
-# Load packages
-
 # Step 1: build site_sample × species matrix
 comm_matrix <- metab_filt_macro97 %>%
   group_by(site, per, species) %>%
@@ -532,16 +612,16 @@ mds_scores <- cbind(meta, mds_scores)
 # Step 7: plot with stress in title
 stress_val <- round(mds$stress, 3)
 
-ggplot(mds_scores, aes(x = NMDS1, y = NMDS2, color = site, shape = as.factor(per))) +
+n <- ggplot(mds_scores, aes(x = NMDS1, y = NMDS2, color = site, shape = as.factor(per))) +
   geom_point(size = 4, alpha = 0.9) +
   theme_minimal(base_size = 14) +
   scale_color_brewer(palette = "Paired") +  # nice distinct colors for 10 sites
   labs(
-    title = paste0("NMDS of Community Structure (CLR + Aitchison) | Stress = ", stress_val),
+    title = paste0("Stress = ", stress_val),
     x = "NMDS1",
     y = "NMDS2",
-    color = "Site",
-    shape = "Percent Dry Weight"
+    color = "site",
+    shape = "sample percentage "
   ) +
   theme(
     legend.position = "right",
@@ -549,83 +629,83 @@ ggplot(mds_scores, aes(x = NMDS1, y = NMDS2, color = site, shape = as.factor(per
     panel.grid.major = element_blank(),
      panel.border = element_rect(color = "black", fill = NA, linewidth = 1)  # 🔲 adds black border
   )
-```
 
+# save as PNG
+ggsave(
+  filename = "macro_data/nmds_precentage_plot.png",
+  plot = n,
+  width = 8,      # inches
+  height = 6,     # inches
+  dpi = 300       # high resolution
+)
+print(n)
+```
 ```{r}
-# Use the cleaned dataframe for plotting
+library(ggplot2)
+library(RColorBrewer)
+library(patchwork)
+
 plot_df <- site_samp_prop_dw
 
-# Create colour palette for sites
-sites <- data.frame(
-  sitecode = unique(plot_df$site),
-  col = RColorBrewer::brewer.pal(n = length(unique(plot_df$site)), name = "Spectral")
-)
+# Colour palette
+site_cols <- brewer.pal(length(unique(plot_df$site)), "Spectral")
+names(site_cols) <- unique(plot_df$site)
 
-par(mfrow = c(2, 2), mar = c(3.5, 3.5, 1, 0.5))
+# -------------------------------------------------------
+# PANEL A — Subsample proportion vs species richness
+# -------------------------------------------------------
+p1 <- ggplot(plot_df, aes(x = subsamp_prpn, y = sp_richness, color = site)) +
+  geom_line(aes(group = site), linewidth = 0.6, alpha = 0.8) +
+  geom_jitter(width = 0.01, height = 0.15, size = 2, alpha = 0.9) +
+  scale_color_manual(values = site_cols) +
+  scale_x_continuous(
+    labels = scales::percent_format(accuracy = 1)  # show as percentage
+  ) +
+  scale_y_continuous(limits = c(0, NA)) +
+  labs(
+    x = "sub-sample (%)",
+    y = "species richness"
+  ) +
+  theme_bw(base_size = 12) +
+  theme(
+    legend.position = "none",
+    panel.border = element_rect(color = "black", fill = NA),
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_blank()
+  )
+# -------------------------------------------------------
+# PANEL B — Dry weight vs species richness
+# -------------------------------------------------------
+p2 <- ggplot(plot_df, aes(x = subsamp_dw, y = sp_richness, color = site)) +
+  geom_line(aes(group = site), linewidth = 0.6, alpha = 0.8) +   # join dots
+  geom_jitter(width = 0.15, height = 0.15, size = 2, alpha = 0.9) +
+  scale_color_manual(values = site_cols) +
+  scale_y_continuous(limits = c(0, NA)) +     # y starts at 0
+  labs(
+    x = "dry weight (g)",
+    y = "species richness"
+  ) +
+  theme_bw(base_size = 12) +
+    theme(
+    legend.position = "right",
+    panel.border = element_rect(color = "black", fill = NA),
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_blank()
+  ) +
+  labs(color = "site")  # set the legend title
 
-### ---- PANEL A: Species richness vs subsample proportion ----
-plot(plot_df$subsamp_prpn, plot_df$sp_richness, type = 'n',
-     axes = FALSE, xlab = "", ylab = "")
-axis(1); axis(2, las = 1); box(bty = 'l')
-title(xlab = "Subsample proportion", line = 2)
-title(ylab = "Number of species", line = 2.5)
-title(main = "A.", adj = 0, line = 0)
+# Combine
+(p1 | p2)
 
-for(i in 1:nrow(sites)){
-  with(plot_df[plot_df$site == sites$sitecode[i],],
-       points(jitter(subsamp_prpn), jitter(sp_richness),
-              pch = 21, bg = sites$col[i]))
-}
-abline(v = 1, lty = 3)
+combined_plot <- (p1 | p2)
 
-### ---- PANEL B: Proportion species detected vs subsample proportion ----
-plot(plot_df$subsamp_prpn, plot_df$prpn_totsp, type = 'n',
-     ylim = c(0, 1), axes = FALSE, xlab = "", ylab = "")
-axis(1); axis(2, las = 1); box(bty = 'l')
-title(xlab = "Subsample proportion", line = 2)
-title(ylab = "Proportion species detected", line = 2.5)
-title(main = "B.", adj = 0, line = 0)
-
-for(i in 1:nrow(sites)){
-  df <- plot_df[plot_df$site == sites$sitecode[i], ]
-  lines(df$subsamp_prpn, df$prpn_totsp, col = sites$col[i])
-  points(df$subsamp_prpn, df$prpn_totsp, pch = 21, bg = sites$col[i])
-}
-
-legend("bottomright", legend = sites$sitecode,
-       pt.bg = sites$col, pch = 21, cex = 0.8, bty = "n")
-abline(h = c(0.88, 0.99), v = 0.3, lty = 3)
-
-### ---- PANEL C: Species richness vs dry weight ----
-plot(plot_df$subsamp_dw, plot_df$sp_richness, type = 'n',
-     axes = FALSE, xlab = "", ylab = "")
-axis(1); axis(2, las = 1); box(bty = 'l')
-title(xlab = "Subsample dry weight (g)", line = 2)
-title(ylab = "Number of species", line = 2.5)
-title(main = "C.", adj = 0, line = 0)
-
-for(i in 1:nrow(sites)){
-  with(plot_df[plot_df$site == sites$sitecode[i],],
-       points(jitter(subsamp_dw), jitter(sp_richness),
-              pch = 21, bg = sites$col[i]))
-}
-
-### ---- PANEL D: Proportion species detected vs dry weight ----
-plot(plot_df$subsamp_dw, plot_df$prpn_totsp, type = 'n',
-     ylim = c(0, 1), axes = FALSE, xlab = "", ylab = "")
-axis(1); axis(2, las = 1); box(bty = 'l')
-title(xlab = "Subsample dry weight (g)", line = 2)
-title(ylab = "Proportion species detected", line = 2.5)
-title(main = "D.", adj = 0, line = 0)
-
-for(i in 1:nrow(sites)){
-  df <- plot_df[plot_df$site == sites$sitecode[i], ]
-  lines(df$subsamp_dw, df$prpn_totsp, col = sites$col[i])
-  points(df$subsamp_dw, df$prpn_totsp, pch = 21, bg = sites$col[i])
-}
+ggsave("macro_data/species_richness_panels.png", 
+       plot = combined_plot,
+       width = 10, height = 4, dpi = 300)
 ```
 
 
+##Chris graphs
 ```{r}
 library(dplyr)
 library(RColorBrewer)
@@ -634,8 +714,6 @@ library(boot)   # for inv.logit
 #library(rstan)  # for extracting posterior
 
 # ---- 1. Clean site data and compute subsamp_dw ----
-# Clean site names in site_dw
-site_dw <- site_dw %>% mutate(site = gsub("-", "", site))
 
 # Clean site_sample_prop
 site_samp_prop_dw <- site_sample_prop %>%
@@ -722,6 +800,15 @@ site_slopes <- data.frame(
   b_ss_025  = apply(post_ss$b, 2, quantile, probs = 0.025),
   b_ss_975  = apply(post_ss$b, 2, quantile, probs = 0.975)
 )
-
 ```
+
+```{r}
+df_species_dw <- site_sample_prop_filt %>%
+  left_join(site_dw %>% select(site, t_dw), by = "site") %>%  # join only site and t_dw
+  mutate(dw = (per / 100) * t_dw) %>%                          # calculate proportional dw
+  select(-t_dw)     
+```
+
+
+
 

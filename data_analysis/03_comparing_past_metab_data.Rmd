@@ -41,7 +41,7 @@ remove_codes <- c(
 past_macros <- past_macros %>%
   dplyr::filter(!shortcode %in% remove_codes) %>%
   dplyr::filter(season == "spring")%>%                 # keep only spring samples
-  dplyr::filter(year >= 2015 & year <= 2020)           # keep years 2015 to 2020
+  dplyr::filter(year >= 2010 & year <= 2021)           # keep years 2015 to 2020
 ```
 
 
@@ -218,18 +218,24 @@ site_shapes <- 0:9  # 10 distinct shapes for 10 sites
 nmds_plot <- ggplot(scores_df, aes(NMDS1, NMDS2, color = treatment, shape = site)) +
   geom_point(size = 4) +
   scale_shape_manual(values = site_shapes) +
-  theme_minimal() +
+  theme_classic() +
   labs(
-    title = paste0("NMDS of DNA vs Morphology Identification | Stress = ", stress_val),
+    title = paste0("Stress = ", stress_val),
     x = "NMDS1",
     y = "NMDS2",
-    color = "Identifcation",
-    shape = "Site"
+    color = "identification method",
+    shape = "site"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0),   # left-align title
+    axis.title.x = element_text(hjust = 0), # left-align x-axis label
+    axis.title.y = element_text(hjust = 0), # left-align y-axis label
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 1)
   )
 #-------------------------------------------------------------
 # Save as PNG
 ggsave(
-  filename = "NMDS_DNA_vs_Morph.png",  # file name
+  filename = "past_data/ten_sites_past_nmds_plot.png",  # file name
   plot = nmds_plot,                    # the plot object
   width = 8,                           # width in inches
   height = 6,                          # height in inches
@@ -238,11 +244,13 @@ ggsave(
 
 # Optional: save as PDF
 ggsave(
-  filename = "NMDS_DNA_vs_Morph.pdf",
+  filename = "past_data/ten_sites_past_nmds_plot.png",
   plot = nmds_plot,
   width = 8,
   height = 6
 )
+
+print(nmds_plot)
 ```
 
 

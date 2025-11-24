@@ -124,6 +124,8 @@ box(bty = "l")
 # Add red dashed line at the rarefaction depth
 abline(v = rarefaction_depth, col = "red", lty = 2)
 
+
+
 ```
 # saved version rarefaction both amplicons
 ```{r}

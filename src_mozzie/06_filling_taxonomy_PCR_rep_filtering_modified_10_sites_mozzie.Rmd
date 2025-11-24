@@ -121,7 +121,7 @@ A file based on analysis of Miseq datasets was constructed ('asv_library_97_aug2
 
 ```{r}
 # read in flies
-asv_lib <- read.csv("~/git/asv_library_corrected_Jul_25.csv")
+asv_lib <- read.csv(here::here("data/asv_library_Oct_2025.csv"))
 ```
 
 # remove identifications below thresholds for species species, genus, family and order
@@ -261,10 +261,10 @@ write.csv(metab_long, file = file_name, row.names = FALSE)
 # remove low frequency detections < 5 reads
 ```{r}
 metab_long_hf <- metab_long %>%
-  filter(reads >= 3)
+  filter(reads >= 2)
 
 metab_long_lf <- metab_long %>%
-  filter(reads < 3)  # Corrected this line
+  filter(reads < 2)  # Corrected this line
 
 # Verify the number of records before and after filtering
 original_count <- nrow(metab_long)
@@ -406,7 +406,7 @@ timestamp <- format(Sys.time(), "%d_%m_%Y")
 
 # Create the file name with the timestamp
 file_name1 <- here::here(
-  paste0("results/ten_site_data_summaries/ten_sites_long_format_", timestamp, ".csv"))
+  paste0("results/ten_site_data_summaries/ten_sites_final_long_format_", timestamp, ".csv"))
 
 # Save the dataframe with the new file name
 write.csv(filtered_dataframe_samples, file = file_name1, row.names = FALSE)
