@@ -16,6 +16,9 @@ library(vegan)
 library(compositions)
 library(dplyr)
 library(tidyr)
+library(ggplot2)
+library(RColorBrewer)
+library(patchwork)
 ```
 
 ```{r}
@@ -641,29 +644,18 @@ ggsave(
 print(n)
 ```
 ```{r}
-library(ggplot2)
-library(RColorBrewer)
-library(patchwork)
 
 plot_df <- site_samp_prop_dw
 
-# Colour palette
-site_cols <- brewer.pal(length(unique(plot_df$site)), "Spectral")
-names(site_cols) <- unique(plot_df$site)
-
-# -------------------------------------------------------
-# PANEL A — Subsample proportion vs species richness
-# -------------------------------------------------------
+# PANEL A
 p1 <- ggplot(plot_df, aes(x = subsamp_prpn, y = sp_richness, color = site)) +
   geom_line(aes(group = site), linewidth = 0.6, alpha = 0.8) +
-  geom_jitter(width = 0.01, height = 0.15, size = 2, alpha = 0.9) +
-  scale_color_manual(values = site_cols) +
-  scale_x_continuous(
-    labels = scales::percent_format(accuracy = 1)  # show as percentage
-  ) +
+  geom_point(size = 2, alpha = 0.9) +          # ← no jitter
+  scale_color_brewer(palette = "Paired") +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
   scale_y_continuous(limits = c(0, NA)) +
   labs(
-    x = "sub-sample (%)",
+    x = "sub-sample",
     y = "species richness"
   ) +
   theme_bw(base_size = 12) +
@@ -673,26 +665,22 @@ p1 <- ggplot(plot_df, aes(x = subsamp_prpn, y = sp_richness, color = site)) +
     panel.grid.minor = element_blank(),
     panel.grid.major = element_blank()
   )
-# -------------------------------------------------------
-# PANEL B — Dry weight vs species richness
-# -------------------------------------------------------
+
+# PANEL B
 p2 <- ggplot(plot_df, aes(x = subsamp_dw, y = sp_richness, color = site)) +
-  geom_line(aes(group = site), linewidth = 0.6, alpha = 0.8) +   # join dots
+  geom_line(aes(group = site), linewidth = 0.6, alpha = 0.8) +
   geom_jitter(width = 0.15, height = 0.15, size = 2, alpha = 0.9) +
-  scale_color_manual(values = site_cols) +
-  scale_y_continuous(limits = c(0, NA)) +     # y starts at 0
-  labs(
-    x = "dry weight (g)",
-    y = "species richness"
-  ) +
+  scale_color_brewer(palette = "Paired") +
+  scale_y_continuous(limits = c(0, NA)) +
+  labs(x = "dry weight (g)", y = "species richness", color = "site") +
   theme_bw(base_size = 12) +
-    theme(
+  theme(
     legend.position = "right",
     panel.border = element_rect(color = "black", fill = NA),
     panel.grid.minor = element_blank(),
     panel.grid.major = element_blank()
-  ) +
-  labs(color = "site")  # set the legend title
+  )
+
 
 # Combine
 (p1 | p2)
@@ -702,104 +690,6 @@ combined_plot <- (p1 | p2)
 ggsave("macro_data/species_richness_panels.png", 
        plot = combined_plot,
        width = 10, height = 4, dpi = 300)
-```
-
-
-##Chris graphs
-```{r}
-library(dplyr)
-library(RColorBrewer)
-library(scales)
-library(boot)   # for inv.logit
-#library(rstan)  # for extracting posterior
-
-# ---- 1. Clean site data and compute subsamp_dw ----
-
-# Clean site_sample_prop
-site_samp_prop_dw <- site_sample_prop %>%
-  rename(
-    subsamp_prpn = per,
-    sp_richness = total_species,
-    prpn_totsp = species_prop
-  ) %>%
-  mutate(subsamp_prpn = subsamp_prpn / 100) %>%
-  left_join(site_dw, by = "site") %>%
-  mutate(
-    subsamp_dw = case_when(
-      subsamp_prpn == 0.1 ~ dw10,
-      subsamp_prpn == 0.2 ~ dw20,
-      subsamp_prpn == 0.3 ~ dw30,
-      subsamp_prpn == 0.4 ~ dw40,
-      TRUE ~ NA_real_
-    )
-  ) %>%
-  select(site, subsamp_prpn, subsamp_dw, sp_richness, prpn_totsp)
-
-# ---- 2. Set up plotting colours for sites ----
-sites <- data.frame(
-  sitecode = unique(site_samp_prop_dw$site),
-  col = brewer.pal(n = length(unique(site_samp_prop_dw$site)), name = "Spectral")
-)
-
-# ---- 3. Posterior predictions for species accumulation (0.1 increments) ----
-predict_ssppn <- seq(0.1, 0.9, 0.1)   # subsample proportions
-
-# Scale according to model input
-predict_ssppn_scaled <- as.vector(scale(
-  predict_ssppn,
-  center = attributes(ss_scaled)$`scaled:center`,
-  scale  = attributes(ss_scaled)$`scaled:scale`
-))
-
-# Prediction set for all sites
-n_sites <- length(unique(site_samp_prop_dw$site))
-predict_set <- list(
-  site = rep(1:n_sites, each = length(predict_ssppn_scaled)),
-  x = rep(predict_ssppn_scaled, n_sites)
-)
-
-# Extract posterior
-post_ss <- rstan::extract(fit_ssppn, pars = c("a","b"))
-
-# Compute posterior predictions
-predict_post <- vector("list", length = length(predict_set$x))
-for(i in 1:length(predict_set$x)){
-  predict_post[[i]] <- numeric(nrow(post_ss$a))
-}
-
-for(i in 1:nrow(post_ss$a)){
-  for(j in 1:length(predict_set$x)){
-    predict_post[[j]][i] <- boot::inv.logit(
-      post_ss$a[i, predict_set$site[j]] + 
-      post_ss$b[i, predict_set$site[j]] * predict_set$x[j]
-    )
-  }
-}
-
-# Store predictions in dataframe
-predictions_ss <- data.frame(
-  site_no = predict_set$site,
-  x = predict_set$x
-)
-
-predictions_ss$ss <- predictions_ss$x * attributes(ss_scaled)$`scaled:scale` + 
-                     attributes(ss_scaled)$`scaled:center`
-
-# Map site numbers to site codes
-predictions_ss$site <- tot_spp$site[match(predictions_ss$site_no, 1:n_sites)]
-
-# Compute posterior summaries
-predictions_ss$p_mean <- sapply(predict_post, mean)
-predictions_ss$p_025  <- sapply(predict_post, quantile, probs = 0.005)
-predictions_ss$p_975  <- sapply(predict_post, quantile, probs = 0.995)
-
-# ---- 4. Site slopes summary ----
-site_slopes <- data.frame(
-  class_code = sites$class_code,
-  b_ss_mean = apply(post_ss$b, 2, mean),
-  b_ss_025  = apply(post_ss$b, 2, quantile, probs = 0.025),
-  b_ss_975  = apply(post_ss$b, 2, quantile, probs = 0.975)
-)
 ```
 
 ```{r}
