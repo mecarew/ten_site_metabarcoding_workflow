@@ -28,7 +28,7 @@ dir <- "~/git/ten_site_metabarcoding/"
 # read in past site data
 past_macros <- read.csv(paste0(dir, "data/ten_site_past_data.csv"))
 
-# remove non-macroinvertbrates
+# remove non-macroinvertebrates
 remove_codes <- c(
   "OP","QO","OJ","QC","QA","OG04","QD","QA02","QE","QL","II",
   "QP","QA01","QA04","QT","ZD")
@@ -47,7 +47,7 @@ past_macros <- past_macros %>%
 
 ```{r}
 # read in metabarcoding data
-metab_filt <- read.csv(paste0(dir,"results/ten_site_data_summaries/ten_sites_long_format_11_11_2025.csv")) %>%
+metab_filt <- read.csv(paste0(dir,"results/ten_site_data_summaries/ten_sites_final_long_format_04_12_2025.csv")) %>%
   mutate(year = 2021)
 
 # read in bioassessment codes
