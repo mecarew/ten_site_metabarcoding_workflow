@@ -1,0 +1,25 @@
+database_wrapper:
+  class: File
+  path: _WRAPPER_PATH_
+
+input_taxonomy:
+  class: File
+  path: _INPUT_TAXONOMY_
+  
+input_fasta:
+  class: File
+  path: _INPUT_FASTA_
+
+output_dir:
+  class: Directory
+  path: _OUTPUT_DIR_
+
+output_prefix: _OUTPUT_PREFIX_
+
+output_file:
+  class: File
+  path: _OUTPUT_FASTA_DB_
+
+results_path:
+  class: Directory
+  path: ../results

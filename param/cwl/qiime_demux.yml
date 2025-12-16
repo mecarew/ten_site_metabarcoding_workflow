@@ -1,0 +1,33 @@
+input_qza:
+  class: File
+  path: _INPUT_PATH_
+
+forward_primers_file:
+  class: File
+  path: _PRIMERS_FILE_
+
+reverse_primers_file:
+  class: File
+  path: _PRIMERS_FILE_
+
+forward_primers_column: forward-sequence
+
+reverse_primers_column: reverse-sequence
+
+output_sample_sequences:
+  class: File
+  path: _OUTPUT_SEQUENCES_
+
+output_untrimmed_sequences:
+  class: File
+  path: _OUTPUT_UNTRIMMED_
+  
+results_path:
+  class: Directory
+  path: ../results
+
+# thread: 4
+
+log_file:
+  class: File
+  path: _LOG_PATH_
