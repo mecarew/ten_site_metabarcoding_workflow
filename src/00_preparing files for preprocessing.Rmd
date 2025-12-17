@@ -4,15 +4,27 @@ output: html_document
 ---
 
 # Preparation for running bioinformatic pipeline
-1.    Clone a copy of the workflow from the PEARG github repository https://github.com/pearg/metabarcoding_workflow into your server directory (for this I have set up a directory called 'git' for cloned repositories). You'll need a github account to do this (see - https://docs.github.com/en/get-started/onboarding/getting-started-with-your-github-account).
+1.    Clone a copy of the workflow from the PEARG github repository onto your server directory (for this I have set up a directory called 'git' for cloned repositories). You'll need a github account to do this (see - https://docs.github.com/en/get-started/onboarding/getting-started-with-your-github-account).
 
 2.    Transefer datafiles onto server into folder in data directory
- All files for analysis should be copied into the directory ~/git/metabarcoding_workflow/data/raw. Files can be transferred using file transfer software like 'FileZilla
+ All files for analysis should be copied into the directory ~/git/metabarcoding_workflow/data/raw. Files can be transferred using file transfer software like 'FileZilla'
  
 3.    Format a sample.tsv file using the script below. This will be required to run the 01_preprocessing.
 ```{r}
+# load libraries
 library(dplyr)
 library(here)
+
+data_dir <- here::here("data/raw")
+
+# Check if directory exists
+if (dir.exists(data_dir)) {
+  file_names <- list.files(data_dir)
+} else {
+  # If it doesn't exist, create it (optional) and return empty vector
+  dir.create(data_dir, recursive = TRUE)
+  file_names <- character(0)  # empty character vector
+}
 
 # list files in the folder containing raw data files
 file_names <- list.files(here::here("data/raw"))

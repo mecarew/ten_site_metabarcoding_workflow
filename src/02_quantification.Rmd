@@ -261,9 +261,9 @@ First, define the lengths that amplicon groups will be truncated to.
 ```{r}
 # TODO: Custom truncation lengths from file? Don't know how this should be handled
 truncation_lengths <- data.frame(
-  SampleName = c("short", "left", "right", "long"),
-  forward_trunc_length = c(140, 200, 140, 200),
-  reverse_trunc_length = c(140, 200, 200, 200)
+  SampleName = c("short", "right"), # customize amplicon name for dataset
+  forward_trunc_length = c(140, 140), # set truncation length for forward reads based on quality plots
+  reverse_trunc_length = c(140, 200) # set truncation length for reverse reads based on quality plots
 )
 paged_table(truncation_lengths)
 ```
@@ -421,8 +421,9 @@ paged_table(read_qza(here("results/dada2/short_denoising_stats.qza"))$data)
 ```{r}
 paged_table(read_qza(here("results/dada2/right_denoising_stats.qza"))$data)
 ```
+
 ```{r}
-# save deinosing statistics
+# save denoising statistics
 short_denoising_stats <- read_qza(here("results/dada2/short_denoising_stats.qza"))$data
 write.csv(trim_stats_df,file.path(statistics_dir, "short_denoising_stats.csv"), row.names = FALSE)
 
@@ -436,7 +437,6 @@ write.csv(trim_stats_df,file.path(statistics_dir, "right_denoising_stats.csv"), 
 # DADA2 filtering
 
 Remove low frequency ASVs from DADA2 tables. First filter table with `filter-features-conditionally`, then filter matching sequences with `filter-seqs`.
-
 ```{r}
 # Setup targets
 targets <- data.frame(FileName=extract_targets(dada2, "table_output"),
@@ -456,47 +456,42 @@ write_targets(targets, file=dada2_filtered_targets)
 
 # Determine the number of samples in in the Miseq run
 ```{r}
-# Specify the directory
-directory_path <- here::here("results/import_data")  # Replace with your folder path
+# Directory with raw fastq files
+directory_path <- here::here("results/import_data") 
 
 # List all items in the directory
 items <- list.files(directory_path, full.names = TRUE)
 
-# Filter for directories
+# Filter for directories (samples)
 folders <- items[dir.exists(items)]
 
-# Count the number of folders
-num_folders <- length(folders)
+# Count the number of sample folders
+num_samples <- length(folders)
+cat("Number of samples in the MiSeq run:", num_samples, "\n")
 
-# Print the result
-cat("Number of samples in the miseq run:", num_folders, "\n")
+# Calculate p_prevalence
 
-# Set the total_value equal to the number of samples
-total_value <- num_folders
-part_value <- 1.1
-#part_value <- 2
+# Minimum number of samples an ASV must appear in
+min_samples <- 2
 
-# Calculate the percentage
-proportion <- (part_value / total_value)
-#proportion <- round(proportion1, 4)
+# Calculate prevalence proportion
+p_prevalence <- min_samples / num_samples
+cat("Set 'p_prevalence' to:", p_prevalence, "\n")
 
-# Print the result
-cat("Set 'p_prevalence' to:", proportion, "\n")
+# Set p_abundance
+# Minimum relative abundance to remove singletons (e.g., 2 reads in smallest sample)
+# If you know your smallest sample size, you can calculate:
+# min_reads <- 2
+# smallest_sample_size <- 10000  # Replace with actual smallest sample size
+# p_abundance <- min_reads / smallest_sample_size
+
+# For now, set a conservative default for singletons
+p_abundance <- "0.00001"  # 0.001% relative abundance
+cat("Set 'p_abundance' to:", p_abundance, "\n")
 
 ```
 
-```{r}
-# Set p_abundance and p_prevalence for qiime feature-table filter-features-conditionally.
-# (keep these parameters as strings so they don't get converted to scientific notation further down)
 
-# The minimum relative abundance for a feature to be retained (0.0001% = 0.000001)
-p_abundance <- "0.000001"
-# p_abundance <- "0.001" # Lower threshold for testing purposes
-
-# The minimum portion of samples that a feature must have a relative abundance of at least 
-# `abundance` to be retained
-p_prevalence <- proportion
-```
 
 
 
@@ -522,7 +517,6 @@ dada2_filtering <- renderWF(dada2_filtering, inputvars=c(FileName="_TABLE_INPUT_
                                                          filtered_seq_output="_SEQ_OUTPUT_"))
 run_jobs(dada2_filtering)
 ```
-
 
 :::
 
@@ -569,6 +563,41 @@ dim(before_filtering$data)
 print("Post-filtering:")
 dim(after_filtering$data)
 ```
+```{r}
+# Convert to dataframes
+before_df <- as.data.frame(before_filtering$data)
+after_df  <- as.data.frame(after_filtering$data)
+
+# Summarize each ASV: total reads and prevalence (# of samples with >0)
+summarize_asvs <- function(df) {
+  tibble(
+    ASV = rownames(df),
+    total_reads = rowSums(df),
+    prevalence = rowSums(df > 0)
+  )
+}
+
+before_summary <- summarize_asvs(before_df) %>% mutate(status = "Before Filtering")
+after_summary  <- summarize_asvs(after_df)  %>% mutate(status = "After Filtering")
+
+# Combine
+combined <- bind_rows(before_summary, after_summary)
+
+
+# Plot: total reads vs prevalence
+ggplot(combined, aes(x = prevalence, y = total_reads, color = status)) +
+  geom_jitter(width = 0.2, height = 0.2, alpha = 0.6) +
+  scale_y_log10() +  # log scale to see low-abundance ASVs clearly
+  labs(
+    x = "Prevalence (number of samples)",
+    y = "Total reads per ASV (log10)",
+    title = "Effect of Filtering on ASVs"
+  ) +
+  theme_minimal() +
+  scale_color_manual(values = c("Before Filtering" = "red", "After Filtering" = "blue"))
+
+```
+
 
 ```{r}
 before_filtering <- read_qza(file.path(dada2_dir, "right_table.qza"))
@@ -583,6 +612,42 @@ dim(before_filtering$data)
 print("Post-filtering:")
 dim(after_filtering$data)
 ```
+
+```{r}
+# Convert to dataframes
+before_df <- as.data.frame(before_filtering$data)
+after_df  <- as.data.frame(after_filtering$data)
+
+# Summarize each ASV: total reads and prevalence (# of samples with >0)
+summarize_asvs <- function(df) {
+  tibble(
+    ASV = rownames(df),
+    total_reads = rowSums(df),
+    prevalence = rowSums(df > 0)
+  )
+}
+
+before_summary <- summarize_asvs(before_df) %>% mutate(status = "Before Filtering")
+after_summary  <- summarize_asvs(after_df)  %>% mutate(status = "After Filtering")
+
+# Combine
+combined <- bind_rows(before_summary, after_summary)
+
+
+# Plot: total reads vs prevalence
+ggplot(combined, aes(x = prevalence, y = total_reads, color = status)) +
+  geom_jitter(width = 0.2, height = 0.2, alpha = 0.6) +
+  scale_y_log10() +  # log scale to see low-abundance ASVs clearly
+  labs(
+    x = "Prevalence (number of samples)",
+    y = "Total reads per ASV (log10)",
+    title = "Effect of Filtering on ASVs"
+  ) +
+  theme_minimal() +
+  scale_color_manual(values = c("Before Filtering" = "red", "After Filtering" = "blue"))
+
+```
+
 -----
 
 # LULU
@@ -665,17 +730,12 @@ dir_tree(lulu_dir)
 
 Run LULU to merge features together.
 
-
-```{r}
-# TODO: encapsulate this into a function after checking if lulu arguments need to be changed
-```
-
 ```{r}
 short_table <- read_qza(file.path(dada2_dir, "short_table_filtered.qza"))
 short_table_df <- data.frame(short_table$data)
 short_match_list <- read.table(file.path(lulu_dir, "short_match_list.txt"))
 
-# TODO: Currently using default parameters
+# using default parameters
 z <- capture.output(short_lulu <- lulu(short_table_df, short_match_list))
 
 dim(short_lulu$original_table)
@@ -721,30 +781,6 @@ save.image(here("results/cache/02.RData"))
 ```
 
 -----
-# Filtering checks
-```{r}
-##checking filering_asvs that are kept after filtering
-short_curated_otus <- short_lulu$curated_otus
-short_curated_otus_df <- if (!is.data.frame(short_curated_otus)) {
-short_curated_otus <- as.data.frame(short_curated_otus)
-}
-
-names(short_curated_otus_df)[names(short_curated_otus_df) == "short_curated_otus"] <- "all_filter_asvs"
-
-right_curated_otus <- right_lulu$curated_otus
-right_curated_otus_df <- if (!is.data.frame(right_curated_otus)) {
-right_curated_otus <- as.data.frame(right_curated_otus)
-}
-
-names(right_curated_otus_df)[names(right_curated_otus_df) == "right_curated_otus"] <- "all_filter_asvs"
-
-
-all_curated_otus <- rbind(right_curated_otus_df, short_curated_otus_df)
-
-
-write.csv(all_curated_otus, file = here("results/MiSeq17_all_curated_asvs_filtered_008.csv"), row.names = FALSE)
- 
-```
 
 # Session Info
 

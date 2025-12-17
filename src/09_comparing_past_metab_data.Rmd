@@ -23,7 +23,7 @@ Comparing past data to metabarcoding data.
 
 ```{r}
 # set directory path
-dir <- "~/git/ten_site_metabarcoding/"
+dir <- "~/git/ten_site_metabarcoding_workflow/"
 
 # read in past site data
 past_macros <- read.csv(paste0(dir, "data/ten_site_past_data.csv"))
@@ -47,7 +47,7 @@ past_macros <- past_macros %>%
 
 ```{r}
 # read in metabarcoding data
-metab_filt <- read.csv(paste0(dir,"results/ten_site_data_summaries/ten_sites_final_long_format_04_12_2025.csv")) %>%
+metab_filt <- read.csv(paste0(dir,"results/ten_site_data_summaries/ten_sites_final_long_format_16_12_2025.csv")) %>%
   mutate(year = 2021)
 
 # read in bioassessment codes
@@ -228,14 +228,14 @@ nmds_plot <- ggplot(scores_df, aes(NMDS1, NMDS2, color = treatment, shape = site
   ) +
   theme(
     plot.title = element_text(hjust = 0),   # left-align title
-    axis.title.x = element_text(hjust = 0), # left-align x-axis label
-    axis.title.y = element_text(hjust = 0), # left-align y-axis label
+    axis.title.x = element_text(hjust = 0.5), # left-align x-axis label
+    axis.title.y = element_text(hjust = 0.5), # left-align y-axis label
     panel.border = element_rect(color = "black", fill = NA, linewidth = 1)
   )
 #-------------------------------------------------------------
 # Save as PNG
 ggsave(
-  filename = "past_data/ten_sites_past_nmds_plot.png",  # file name
+  filename = here::here("results/data_analysis/past_data/ten_sites_past_nmds_plot.png"),  # file name
   plot = nmds_plot,                    # the plot object
   width = 8,                           # width in inches
   height = 6,                          # height in inches
@@ -244,7 +244,7 @@ ggsave(
 
 # Optional: save as PDF
 ggsave(
-  filename = "past_data/ten_sites_past_nmds_plot.png",
+  filename = here::here("results/data_analysis/past_data/ten_sites_past_nmds_plot.png"),
   plot = nmds_plot,
   width = 8,
   height = 6

@@ -27,7 +27,7 @@ library(here)
 fambc <- read.csv(here::here("data/family_bugcodes.csv")) # macroinvertebrate taxoncodes
 
 # read in DNA data and align with full data labels (add back in hyphens)
-metab_filt <- read.csv(here::here("results/ten_site_data_summaries/ten_sites_final_long_format_04_12_2025.csv")) %>%
+metab_filt <- read.csv(here::here("results/ten_site_data_summaries/ten_sites_final_long_format_16_12_2025.csv")) %>%
   mutate(
     site = case_when(
       site == "FEH41843"  ~ "FEH-4184-3",
@@ -188,8 +188,10 @@ dir.create(
 )
 
 write.csv(morph_sum, here::here("results/data_analysis/morph_table/ten_site_morph_summary.csv"))
-```
 
+print(morph_sum)
+```
+# taxa missing from meta
 ```{r}
 missing_pairs_morph50 <- morph50 %>%
   filter(!is.na(shortcode), shortcode != "") %>%
@@ -270,7 +272,8 @@ no_bc <- no_bc %>%
     species == "uncultured zooplankton" ~ "amoeba/rotifers/zooplankton",
     
     # Algae / Plants
-    phylum %in% c("Rhodophyta", "Ochrophyta", "Bacillariophyta", "Chlorophyta", "Streptophyta", "Cryptista",  "Gyrista", "Magnoliophyta") | class == "Phaeophyceae" ~ "algae/plants",
+    phylum %in% c("Rhodophyta", "Ochrophyta", "Bacillariophyta", "Chlorophyta", "Streptophyta", "Cryptista",
+    "Gyrista", "Magnoliophyta") | class %in% c("Phaeophyceae", "Synurophyceae") ~ "algae/plants",
     
     # Unassigned
     kingdom == "Unassigned" ~ "unassigned",
@@ -326,7 +329,7 @@ write.csv(
   row.names = FALSE
 )
 ```
-# compare abundance to dry wieght
+# compare abundance to dry weight
 ```{r}
 abund_dw <- morph_sum %>%
   left_join(site_dw %>% select(site, t_dw), by = "site")
@@ -515,6 +518,19 @@ print(p)
 
 anova_prop <- aov(species_prop ~ factor(per), data = site_sample_prop)
 summary(anova_prop)
+
+# Summary per period
+per_summary <- site_sample_prop %>%
+  group_by(per) %>%
+  summarise(
+    mean_species_prop = mean(species_prop, na.rm = TRUE),
+    median_species_prop = median(species_prop, na.rm = TRUE),
+    mean_total_species = mean(total_species, na.rm = TRUE),
+    median_total_species = median(total_species, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+per_summary
 ```
 
 Community structure across subsamples
@@ -567,30 +583,58 @@ n <- ggplot(mds_scores, aes(x = NMDS1, y = NMDS2, color = site, shape = as.facto
   )
 
 # save as PNG
-ggsave(
-  filename = here::here("results/adta_analysis/macro_data/nmds_precentage_plot.png"),
-  plot = n,
-  width = 8,      # inches
-  height = 6,     # inches
-  dpi = 300       # high resolution
-)
+# ggsave(
+#   filename = here::here("results/data_analysis/macro_data/nmds_precentage_plot.png"),
+#   plot = n,
+#   width = 8,      # inches
+#   height = 6,     # inches
+#   dpi = 300       # high resolution
+# )
 print(n)
 ```
 ```{r}
+# Make df with species richness and dry weight of sub-samples
+site_samp_prop_dw <- metab_filt_macro %>%
+  distinct(site, site_per, species, per) %>%      # include 'per'
+  group_by(site, site_per, per) %>%
+  summarise(
+    sp_detected = n(),                            # count species per site_per
+    .groups = "drop"
+  ) %>%
+  group_by(site) %>%
+  mutate(
+    sp_total = max(sp_detected),                 # total species per site
+    sp_prop = sp_detected / sp_total,            # proportion per site_per
+    dw_code = str_sub(site_per, 1, 2)           # extract first two digits from site_per
+  ) %>%
+  ungroup() %>%
+  # join DW value for each site_per
+  left_join(
+    site_dw %>%
+      pivot_longer(
+        cols = starts_with("dw"),
+        names_to = "dw_col",
+        values_to = "subsamp_dw"
+      ) %>%
+      mutate(dw_code = str_remove(dw_col, "dw")) %>%
+      select(site, dw_code, subsamp_dw),
+    by = c("site", "dw_code")
+  ) %>%
+  select(-dw_code)  # optional: remove dw_code if you just want subsamp_dw
 
-plot_df <- site_samp_prop_dw
+# check result
+head(site_samp_prop_dw)
 
 # PANEL A
-p1 <- ggplot(plot_df, aes(x = subsamp_prpn, y = sp_richness, color = site)) +
+p1 <- ggplot(site_samp_prop_dw, aes(x = per, y = sp_detected, color = site)) +
   geom_line(aes(group = site), linewidth = 0.6, alpha = 0.8) +
-  geom_point(size = 2, alpha = 0.9) +          # ← no jitter
+  geom_point(size = 2, alpha = 0.9) +
   scale_color_brewer(palette = "Paired") +
-  scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
-  scale_y_continuous(limits = c(0, NA)) +
-  labs(
-    x = "sub-sample",
-    y = "species richness"
+  scale_x_continuous(
+    labels = function(x) scales::percent(x / 100, accuracy = 1)
   ) +
+  scale_y_continuous(limits = c(0, NA)) +
+  labs(x = "sub-sample", y = "species richness") +
   theme_bw(base_size = 12) +
   theme(
     legend.position = "none",
@@ -600,7 +644,7 @@ p1 <- ggplot(plot_df, aes(x = subsamp_prpn, y = sp_richness, color = site)) +
   )
 
 # PANEL B
-p2 <- ggplot(plot_df, aes(x = subsamp_dw, y = sp_richness, color = site)) +
+p2 <- ggplot(site_samp_prop_dw, aes(x = subsamp_dw, y = sp_detected, color = site)) +
   geom_line(aes(group = site), linewidth = 0.6, alpha = 0.8) +
   geom_jitter(width = 0.15, height = 0.15, size = 2, alpha = 0.9) +
   scale_color_brewer(palette = "Paired") +
@@ -614,22 +658,20 @@ p2 <- ggplot(plot_df, aes(x = subsamp_dw, y = sp_richness, color = site)) +
     panel.grid.major = element_blank()
   )
 
+# Combine panels
+library(patchwork)
+combined_plot <- p1 | p2
 
-# Combine
-(p1 | p2)
+# Save
+ggsave(
+  here::here("results/data_analysis/macro_data/species_richness_panels.png"), 
+  plot = combined_plot,
+  width = 10, height = 4, dpi = 300
+)
 
-combined_plot <- (p1 | p2)
+print(combined_plot)
 
-ggsave(here::here("results/adta_analysis/macro_data/species_richness_panels.png"), 
-       plot = combined_plot,
-       width = 10, height = 4, dpi = 300)
-```
 
-```{r}
-df_species_dw <- site_sample_prop_filt %>%
-  left_join(site_dw %>% select(site, t_dw), by = "site") %>%  # join only site and t_dw
-  mutate(dw = (per / 100) * t_dw) %>%                          # calculate proportional dw
-  select(-t_dw)     
 ```
 
 

@@ -19,11 +19,11 @@ library(here)
 ```
 
 ```{r}
-# input unflitered metabarcoding data with final taxonomy
-metab_fil <- read.csv(here::here("results/ten_site_data_summaries/ten_sites_vsearch_data_summary_filled_long_format_04_12_2025.csv"))
+# input unfiltered metabarcoding data with final taxonomy
+metab_fil <- read.csv(here::here("results/ten_site_data_summaries/ten_sites_vsearch_data_summary_filled_long_format_16_12_2025.csv"))
 
-# input  finL flitered metabarcoding data     
-metab_filt <- read.csv(here::here("results/ten_site_data_summaries/ten_sites_final_long_format_04_12_2025.csv"))
+# input  final flitered metabarcoding data     
+metab_filt <- read.csv(here::here("results/ten_site_data_summaries/ten_sites_final_long_format_16_12_2025.csv"))
 ```
 
 
