@@ -607,7 +607,7 @@ The columns in the above table refer to:
 - `total_output_bp`: the number of base pairs that passed after trimming
 
 ```{r}
-# save cutadapt stats for record
+# save cutadapt stats
 statistics_dir <- file.path(results_dir, "statistics")
 mkdir(statistics_dir)
 write.csv(trim_stats_df,file.path(statistics_dir, "cutadapt_statistics.csv"), row.names = FALSE)

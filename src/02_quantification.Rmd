@@ -416,9 +416,6 @@ dir_tree(dada2_dir)
 
 ```{r}
 paged_table(read_qza(here("results/dada2/short_denoising_stats.qza"))$data)
-```
-
-```{r}
 paged_table(read_qza(here("results/dada2/right_denoising_stats.qza"))$data)
 ```
 

@@ -253,134 +253,68 @@ ggsave(
 print(nmds_plot)
 ```
 
-
 ```{r}
-# -------------------------------------------------------------
-# STEP 0: Create presence/absence dataframes (no year)
-# -------------------------------------------------------------
+# checking why BNY-2904-2 looks different
+shortcode_diff <- {
+  past_shortcodes <- past_macros %>%
+    filter(site == "BNY-2904-2") %>%
+    distinct(shortcode) %>%
+    pull(shortcode)
 
-past_pa <- past_macros %>%
-  group_by(site, shortcode) %>%
-  summarise(present = 1, .groups = "drop")
+  dna_shortcodes <- dna_macro %>%
+    filter(site == "BNY-2904-2") %>%
+    distinct(shortcode) %>%
+    pull(shortcode)
 
-meta_pa <- dna_macro %>%
-  group_by(site, shortcode) %>%
-  summarise(present = 1, .groups = "drop")
-
-# -------------------------------------------------------------
-# STEP 1: Prepare long-format data
-# -------------------------------------------------------------
-
-# DNA: one per site
-dna_long <- meta_pa %>%
-  mutate(treatment = "DNA",
-         sample_id = paste0(site, "_DNA"))
-
-# Morph: one per site (collapsed across years)
-morph_long <- past_pa %>%
-  mutate(treatment = "Morph",
-         sample_id = paste0(site, "_Morph"))
-
-# Combine
-all_pa <- bind_rows(dna_long, morph_long)
-
-# -------------------------------------------------------------
-# STEP 2: Build sample × species matrix (presence/absence)
-# -------------------------------------------------------------
-
-comm_matrix <- all_pa %>%
-  group_by(site, treatment, sample_id, shortcode) %>%
-  summarise(present = max(present), .groups = "drop") %>%  # collapse duplicates
-  pivot_wider(
-    names_from = shortcode,
-    values_from = present,
-    values_fill = 0
+  tibble(
+    source = c(
+      rep("past_macro_only", length(setdiff(past_shortcodes, dna_shortcodes))),
+      rep("dna_macro_only", length(setdiff(dna_shortcodes, past_shortcodes)))
+    ),
+    shortcode = c(
+      setdiff(past_shortcodes, dna_shortcodes),
+      setdiff(dna_shortcodes, past_shortcodes)
+    )
   )
+}
 
-# -------------------------------------------------------------
-# STEP 3: Species matrix only
-# -------------------------------------------------------------
-
-species_mat <- comm_matrix %>%
-  select(-site, -treatment, -sample_id) %>%
-  as.data.frame()
-
-# -------------------------------------------------------------
-# STEP 4: Metadata
-# -------------------------------------------------------------
-
-meta <- comm_matrix %>%
-  select(site, treatment, sample_id)
-
-# -------------------------------------------------------------
-# STEP 5: CLR transform (add pseudocount to avoid log(0))
-# -------------------------------------------------------------
-
-species_clr <- clr(species_mat + 1) %>%
-  as.data.frame()
-
-# -------------------------------------------------------------
-# STEP 6: NMDS (Euclidean on CLR = Aitchison distance)
-# -------------------------------------------------------------
-
-set.seed(123)
-nmds <- metaMDS(species_clr, distance = "euclidean", k = 2, trymax = 100)
-
-# -------------------------------------------------------------
-# STEP 7: Extract site/sample scores
-# -------------------------------------------------------------
-
-scores_df <- as.data.frame(scores(nmds, display = "sites"))
-scores_df <- cbind(meta, scores_df)
-
-stress_val <- round(nmds$stress, 3)
-
-# -------------------------------------------------------------
-# STEP 8: Plot NMDS
-# -------------------------------------------------------------
-
-site_shapes <- 0:9  # 10 distinct shapes for 10 sites
-
-ggplot(scores_df, aes(NMDS1, NMDS2, color = treatment, shape = site)) +
-  geom_point(size = 4) +
-  scale_shape_manual(values = site_shapes) +
-  theme_minimal() +
-  labs(
-    title = paste0("NMDS of DNA vs Morphology Presence/Absence | Stress = ", stress_val),
-    x = "NMDS1",
-    y = "NMDS2",
-    color = "Identification",
-    shape = "Site"
-  )
 
 ```
 
-                                         
+                                       
 
 ```{r}
-# Shortcodes in Morph (past_pa)
-morph_shortcodes <- unique(past_pa$shortcode)
+shortcode_diff <- {
+  # Get unique shortcodes per site
+  past_shortcodes <- past_macros %>%
+    filter(site == "BNY-2904-2") %>%
+    distinct(shortcode) %>%
+    pull(shortcode)
 
-# Shortcodes in DNA (meta_pa)
-dna_shortcodes <- unique(meta_pa$shortcode)
+  dna_shortcodes <- dna_macro %>%
+    filter(site == "BNY-2904-2") %>%
+    distinct(shortcode) %>%
+    pull(shortcode)
 
-# Shortcodes only in Morph
-unique_to_morph <- setdiff(morph_shortcodes, dna_shortcodes)
+  # Identify differences
+  diff_shortcodes <- tibble(
+    source = c(
+      rep("past_macro_only", length(setdiff(past_shortcodes, dna_shortcodes))),
+      rep("dna_macro_only", length(setdiff(dna_shortcodes, past_shortcodes)))
+    ),
+    shortcode = c(
+      setdiff(past_shortcodes, dna_shortcodes),
+      setdiff(dna_shortcodes, past_shortcodes)
+    )
+  )
 
-# Shortcodes only in DNA
-unique_to_dna <- setdiff(dna_shortcodes, morph_shortcodes)
-
-# Shortcodes shared by both
-shared_shortcodes <- intersect(morph_shortcodes, dna_shortcodes)
-
-# Display
-length(unique_to_morph)  # how many only in Morph
-length(unique_to_dna)    # how many only in DNA
-length(shared_shortcodes) # how many in both
-
-unique_to_morph
-unique_to_dna
-shared_shortcodes
+  # Add family names from biobc
+  diff_shortcodes %>%
+    left_join(
+      biobc %>% select(shortcode, family),
+      by = "shortcode"
+    )
+}
 
 ```
 
