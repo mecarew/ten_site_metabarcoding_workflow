@@ -47,7 +47,7 @@ past_macros <- past_macros %>%
 
 ```{r}
 # read in metabarcoding data
-metab_filt <- read.csv(paste0(dir,"results/ten_site_data_summaries/ten_sites_final_long_format_16_12_2025.csv")) %>%
+metab_filt <- read.csv(paste0(dir,"results/ten_site_data_summaries/ten_sites_final_long_format_24_02_2026.csv")) %>%
   mutate(year = 2021)
 
 # read in bioassessment codes
@@ -277,8 +277,6 @@ shortcode_diff <- {
     )
   )
 }
-
-
 ```
 
                                        
@@ -317,8 +315,6 @@ shortcode_diff <- {
 }
 
 ```
-
-
 
 ```{r}
 

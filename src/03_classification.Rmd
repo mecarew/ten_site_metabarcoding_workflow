@@ -3,14 +3,6 @@ title: "Metabarcoding Classification"
 description: |
   A QIIME2-based metabarcoding workflow. Part 3.
 author:
-  - name: Your Name Here
-    url: https://example.com/
-    affiliation: Example Organisation
-    affiliation_url: https://example.com/
-    orcid_id: 0000-0000-0000-0000
-  - name: Jessica Chung
-    url: https://github.com/jessicachung
-    affiliation: Melbourne Bioinformatics, PEARG
 date: "`r Sys.Date()`"
 output: 
   distill::distill_article:
@@ -25,11 +17,6 @@ output:
 
 
 This notebook performs classification for your metabarcoding analysis. This notebook depends on the outputs of the previous notebooks, `01_preprocessing.Rmd` where we preprocessed the sequencing data, and `02_quantification` where we quantified ASVs.
-
-
-```{r}
-# TODO: customise slurm n_threads if using slurm or not
-```
 
 
 ```{r setup, include=FALSE}
@@ -132,7 +119,7 @@ targets <- targets %>%
 
 database_targets <- here("tmp/database_targets.txt")
 
-# WIP: For the moment, only run the short/right amplicions
+#  run the short/right amplicons
 write_targets(targets %>% filter(SampleName %in% c("short", "right")), file=database_targets)
 ```
 
@@ -224,7 +211,7 @@ if (! big_dataset)
   stopifnot(all(! is.na(targets)))
   
   # This can be changed if you want different parameters
-  targets$min_consensus <- 0.7
+  targets$min_consensus <- 0.8
   targets$p_identity <- 0.85
   
   targets <- targets %>% 
@@ -236,7 +223,7 @@ if (! big_dataset)
   
   prelim_classification_targets <- here("tmp/classification_prelim_targets.txt")
   
-  # WIP: For the moment, only run the short and right amplicions
+  # run the short and right amplicons
   write_targets(targets %>% filter(amplicon_group %in% c("short", "right")), file=prelim_classification_targets) 
                 }
 ```
@@ -268,7 +255,7 @@ if (big_dataset) {
   
   prelim_classification_targets <- here("tmp/classification_prelim_vsearch_targets.txt")
   
-  # WIP: For the moment, only run the short amplicions
+  # Run the short and right amplicons
   write_targets(targets %>% filter(amplicon_group %in% c("short", "right")), file=prelim_classification_targets)
 }
 ```
@@ -446,7 +433,7 @@ write_id_files_for_thresholds <- function(x, file_path, file_prefix) {
 ```{r}
 thresholds_list <- list()
 for (amplicon_group in amplicon_groups) {
-  # WIP: only short and right amplicon groups for now
+  # short and right amplicon groups
   if (! amplicon_group %in% c("short", "right")) {
     next
   }
@@ -515,7 +502,7 @@ targets <- targets %>%
 
 classification_targets <- here("tmp/classification_targets.txt")
 
-# WIP: For the moment, only run the short and right amplicons
+# run the short and right amplicons
 write_targets(targets %>% filter(amplicon_group %in% c("short", "right")), file=classification_targets)
 ```
 

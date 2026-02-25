@@ -38,7 +38,7 @@ file_path <- here::here("results/final_data_summaries/")
 # Set the directory path for files to be stored on uomshare (NOTE: 'test' will need to be change to your miseq folder name)
 
 #read in final vsearch data summaries
-miseq13_vsearch_sum <- read.csv(paste0(file_path, "miseq13_vsearch_data_summary_26_11_2024.csv"))
+miseq13_vsearch_sum <- read.csv(paste0(file_path, "miseq13_vsearch_data_summary_23_02_2026.csv"))
 miseq15_vsearch_sum <-read.csv(paste0(file_path,"miseq15_vsearch_data_summary_26_11_2024.csv"))
 # fix a small error in dataframe
 miseq15_vsearch_sum <- miseq15_vsearch_sum %>%
@@ -51,20 +51,24 @@ miseq16_vsearch_sum <- read.csv(paste0(file_path, "miseq16_vsearch_data_summary_
 miseq13_vsearch_sum_mod <- miseq13_vsearch_sum[, !(names(miseq13_vsearch_sum) %in% c("X10FEH41843rep1", "X10FEH41843rep2", "X40BNY29042rep1", "X40BNY29042rep2", "X30DNG79574rep1", "X30DNG79574rep2"))]
 
 # subset rerun data from Miseq15 and Miseq16 to merge with miseq13_vsearch_sum_mod
-miseq15_vsearch_reruns <- miseq15_vsearch_sum %>% select(asv_code, kingdom, phylum, class, order, family, genus, species, Consensus, max_p_identity, threshold, X40BNY29042rep3, X40BNY29042rep4, X10FEH41841rep3, X10FEH41841rep4, asv_seq, amplicon)
+miseq15_vsearch_reruns <- miseq15_vsearch_sum %>% select(asv_code, kingdom, phylum, class, order, family, genus, species, Consensus, max_p_identity, threshold, X40BNY29042rep3, X40BNY29042rep4, X10FEH41841rep3, X10FEH41841rep4, DrosXrep1, DrosXrep2, DrosXrep2, MAR2Trep1, MAR2Trep2, MAR2Trep3, asv_seq, amplicon)
 # Rename sample columns to site names
 miseq15_vsearch_reruns <- miseq15_vsearch_reruns %>%
   dplyr::rename(X10FEH41843rep3 = X10FEH41841rep3, X10FEH41843rep4 = X10FEH41841rep4)
 
-miseq16_vsearch_reruns <- miseq16_vsearch_sum %>% select(asv_code, kingdom, phylum, class, order, family, genus, species, Consensus, max_p_identity, threshold, Elut30DNG79574rep1, Elut30DNG79574rep3, asv_seq, amplicon)
+miseq16_vsearch_reruns <- miseq16_vsearch_sum %>% select(asv_code, kingdom, phylum, class, order, family, genus, species, Consensus, max_p_identity, threshold, Elut30DNG79574rep1, Elut30DNG79574rep3, DrosXrep1, DrosXrep2, DrosXrep3, MAR2Trep1, MAR2Trep2, MAR2Trep3, asv_seq, amplicon)
 # rename sample name to site name
-miseq16_vsearch_reruns <- miseq16_vsearch_reruns %>% dplyr::rename(`X30DNG79574rep1` = Elut30DNG79574rep1, `X30DNG79574rep2` = Elut30DNG79574rep3)
+miseq16_vsearch_reruns <- miseq16_vsearch_reruns %>% dplyr::rename(`X30DNG79574rep1` = Elut30DNG79574rep1, `X30DNG79574rep2` = Elut30DNG79574rep3, DrosXrep4 = DrosXrep1, DrosXrep5 = DrosXrep2, DrosXrep6 = DrosXrep3, MAR2Trep4 = MAR2Trep1, MAR2Trep5 = MAR2Trep2, MAR2Trep6 = MAR2Trep3)
+
+# non-data columns
+keep_first  <- colnames(miseq13_vsearch_sum_mod)[1:11]
+keep_last   <- tail(colnames(miseq13_vsearch_sum_mod), 2)
 
 # merge all data into a final vsearch data frame for the 10 site study
 # Pivot data so it can be bound
 miseq13_vsearch_sum_mod_long <- miseq13_vsearch_sum_mod %>%
   pivot_longer(
-    cols = X10BNY29042rep1:Cont3rep1,  # Specify the range or individual column names
+    cols = -all_of(c(keep_first, keep_last)),  # Specify the range or individual column names
     names_to = "sample",
     values_to = "value"
   ) %>%
@@ -75,7 +79,7 @@ miseq13_vsearch_sum_mod_long <- miseq13_vsearch_sum_mod %>%
 
 miseq15_vsearch_long <- miseq15_vsearch_reruns %>%
   pivot_longer(
-    cols = X40BNY29042rep3:X10FEH41843rep4,  # Specify the range or individual column names
+   cols = -all_of(c(keep_first, keep_last)),  # Specify the range or individual column names
     names_to = "sample",
     values_to = "value"
   ) %>%
@@ -86,7 +90,7 @@ miseq15_vsearch_long <- miseq15_vsearch_reruns %>%
  
 miseq16_vsearch_long <- miseq16_vsearch_reruns %>%
   pivot_longer(
-    cols = X30DNG79574rep1:X30DNG79574rep2,  # Specify the range or individual column names
+  cols = -all_of(c(keep_first, keep_last)),  # Specify the range or individual column names
     names_to = "sample",
     values_to = "value"
   ) %>%
@@ -120,8 +124,12 @@ A file based on analysis of Miseq datasets was constructed ('asv_library_97_aug2
 -   identifies any ambiguous taxonomic assignments that should be considered as complexes (sheet 4)
 
 ```{r}
-# read in flies
-asv_lib <- read.csv(here::here("data/asv_library_Dec_2025.csv"))
+# read in asv library
+asv_lib <- read.csv(here::here("data/asv_library_Feb_2026.csv"), 
+                    stringsAsFactors = FALSE)
+
+# Replace all NA with blank
+asv_lib[is.na(asv_lib)] <- ""
 ```
 
 # remove identifications below thresholds for species species, genus, family and order
@@ -177,7 +185,7 @@ final_df_filled <-  final_df_filled %>%
 
 
 ```{r}
-# Create results subdirectory inside your project
+# Create results sub-directory inside your project
 dir.create(here::here("results/ten_site_data_summaries"), recursive = TRUE, showWarnings = FALSE)
 
 # Add timestamp
@@ -192,14 +200,13 @@ file_name <- here::here(
 # Save the dataframe
 write.csv(final_df_filled, file = file_name, row.names = FALSE)
 ```
-______________________________
 
-## SECTION 2: PCR filtering
+____________________________________________________________
+
+# SECTION 2: PCR filtering
 This section is designed to format data and filter it for 'mistagging'. Mistagging or 'tag switching' can occur causing ASVs to be assigned to the wrong sample. This occurs at a low frequency and is usually random. PCR replicates included in the study design help detect and remove these errors. We use three PCR replicates and filter out any species/ASV detections that occur in only one PCR replicate (which are most likely from mistagging). We also add a second flitering step for the five most common ASV (those with the highest number of reads/sequences). These are more likely to be involved in mistagging and can appear in multiple PCR replicate we add a reads threshold for removing these detections.
 
 # Change data to long formmat (list) for PCR replicate filtering 
-Note: This code will need to be configured for each dataset, so that the rows containing the read counts are specified (e.g. pivot_longer(cols = X10BNY29042rep1:Cont3rep1), the 'X10BNY29042rep1:Cont3rep1' will need to be changed to the first and last column name with the reads data for each dataset
-Miseq13:X10BNY29042rep1:Cont3rep1 
 ```{r}
 # Step 1: Add 'X' prefix to column names if they start with a number
 final_df_filled <- final_df_filled %>%
@@ -207,7 +214,7 @@ final_df_filled <- final_df_filled %>%
 
 # Step 2: Pivot longer to transform selected columns into rows
 metab_long <- final_df_filled %>%
-  pivot_longer(cols = X10WMI2320rep2:X30DNG79574rep2, names_to = "sample", values_to = "value") %>%
+  pivot_longer(cols = -(1:13), names_to = "sample", values_to = "value") %>%
   filter(value != 0) %>%  # Remove rows where value is zero
   select(-matches("^X(\\.\\d+)?$"))  # Remove unwanted columns named X, X.1, etc.
 
@@ -257,148 +264,127 @@ file_name <- here::here(
 write.csv(metab_long, file = file_name, row.names = FALSE)
 ```
 
+We use a final dual filtering strategy:
 
-# remove low frequency detections < 2 reads
+ASV-level filtering: We first remove potential mistagging by examining the most dominant ASVs. A proportional filter is applied to remove ASVs that are high-frequency globally but appear with a low number of reads in individual samples, as these are most likely to arise from mistagging.
+
+Species-level filtering: We also apply a species-based filter to remove potential mistags originating from dominant species. ASVs with low frequency within these dominant species are filtered out.
+
+Both filtering processes can be adjusted using different thresholds, which are determined based on control samples in the dataset.
 ```{r}
-metab_long_hf <- metab_long %>%
-  filter(reads >= 2 )
+# PARAMETERS
 
-metab_long_lf <- metab_long %>%
-  filter(reads < 2)  # Corrected this line
+# Scaled proportional filter
+min_thresh <- 0.00
+max_thresh <- 0.001
 
-# Verify the number of records before and after filtering
-original_count <- nrow(metab_long)
-hf_count <- nrow(metab_long_hf)
-lf_count <- nrow(metab_long_lf)
+# Dominant species safeguard
+species_dom_threshold <- 0.05     # ≥5% of global species reads
+min_reads_dom_species <- 11       # minimum reads per ASV for dominant species
 
-cat("Original number of records:", original_count, "\n")
-cat("Number of records with reads >= 2:", hf_count, "\n")
-cat("Number of records with reads < 2:", lf_count, "\n")
-```
+# STEP 1 — Remove globally rare ASVs
+rows_before_lt5 <- nrow(metab_long)
 
-# Filtering single PCR replicate detections
+metab_long_filtered <- metab_long %>%
+  filter(reads >= 5)   # keep rows >3 to remove singletons and doubletons
 
-# filtering by 'species' subset out data with species ids
-```{r}
-# Subset where 'species' has non-empty character values
-metab_long_with_species <- metab_long_hf %>% filter(!is.na(species) & species != "")
+metab_removed_lt5 <- metab_long %>%
+  filter(reads < 5)  # rows removed (<3)
 
-# Subset where 'species' has empty cells or NA (for ASV filtering)
-metab_long_empty_species <- metab_long_hf %>% filter(is.na(species) | species == "")
-```
+rows_after_lt5 <- nrow(metab_long_filtered)
 
-# filter based on common species as these are more likely to be invovled in misstagging in the dataset
-```{r}
-# Step 1: Group by species and summarize the total reads
-species_reads <- metab_long_with_species %>%
+cat("Initial <5 reads filter:\n")
+cat("Rows before filter:", rows_before_lt5, "\n")
+cat("Rows removed (<=3 reads):", nrow(metab_removed_lt5), "\n")
+cat("Rows remaining:", rows_after_lt5, "\n\n")
+# STEP 2 — Compute global ASV proportions
+asv_global <- metab_long_filtered %>%
+  group_by(asv_code, species) %>%
+  summarise(total_reads = sum(reads, na.rm = TRUE), .groups = "drop") %>%
+  mutate(global_prop = total_reads / sum(total_reads))
+
+
+# STEP 3 — Compute scaled threshold
+asv_global <- asv_global %>%
+  mutate(
+    scaled_threshold = min_thresh +
+      (global_prop / max(global_prop)) *
+      (max_thresh - min_thresh)
+  )
+
+# STEP 4 — Merge thresholds back to main data
+metab_scaled <- metab_long_filtered %>%
+  left_join(asv_global %>% select(asv_code, scaled_threshold),
+            by = "asv_code")
+
+# STEP 5 — Compute per-sample proportions
+metab_scaled <- metab_scaled %>%
+  group_by(sample) %>%
+  mutate(sample_prop = reads / sum(reads)) %>%
+  ungroup()
+
+# STEP 6 — Apply scaled proportional filter
+rows_removed_scaled_filter <- metab_scaled %>%
+  filter(sample_prop < scaled_threshold)
+
+cat("Scaled ASV filter:\n")
+cat("Rows before filter:", nrow(metab_scaled), "\n")
+cat("Rows removed:", nrow(rows_removed_scaled_filter), "\n")
+cat("Rows remaining:", nrow(metab_scaled) - nrow(rows_removed_scaled_filter), "\n\n")
+
+metab_scaled_filtered <- metab_scaled %>%
+  filter(sample_prop >= scaled_threshold)
+
+# STEP 7 — Identify globally dominant species
+metab_species_global <- metab_scaled_filtered %>%
+  filter(!is.na(species) & species != "") %>%
   group_by(species) %>%
-  summarise(total_reads = sum(reads, na.rm = TRUE)) %>%
-  arrange(desc(total_reads))
+  summarise(total_reads = sum(reads, na.rm = TRUE), .groups = "drop") %>%
+  filter(total_reads > 10) %>%
+  mutate(global_prop = total_reads / sum(total_reads))
 
-# Print species_reads to verify the summarized data
-print(species_reads)
-
-# Step 2: Extract the top 10 species detections based on 'total_reads' values
-top_species <- species_reads %>%
-  top_n(10, wt = total_reads) %>%
+dominant_species <- metab_species_global %>%
+  filter(global_prop >= species_dom_threshold) %>%
   pull(species)
 
-# Print top_species to verify the top species
-print(top_species)
 
-# Step 3: Filter out reads below 10 for the top 10 species in filtered_dataframe
-filtered_dataframe_top_sp <- metab_long_with_species %>%
-  filter(!(species %in% top_species & reads < 5))
+# STEP 8 — Apply dominant species + minimum reads filter
+rows_removed_dominant_filter <- metab_scaled_filtered %>%
+  filter(!is.na(species) & species != "") %>%
+  filter(species %in% dominant_species & reads <= min_reads_dom_species)
 
-filtered_dataframe_top_sp_rem <- metab_long_with_species %>%
-  filter((species %in% top_species & reads < 5))
+cat("Dominant species safeguard filter:\n")
+cat("Rows removed:", nrow(rows_removed_dominant_filter), "\n")
+cat("Rows remaining:", 
+    nrow(metab_scaled_filtered) - nrow(rows_removed_dominant_filter), "\n\n")
 
-# Verify the number of records before and after filtering
-original_count <- nrow(metab_long_with_species)
-filtered_count <- nrow(filtered_dataframe_top_sp)
+filtered_metab <- metab_scaled_filtered %>%
+  filter(!(species %in% dominant_species & reads <= min_reads_dom_species))
 
-cat("Original number of records:", original_count, "\n")
-cat("Number of records after filtering:", filtered_count, "\n")
-cat("Number of records removed:", original_count - filtered_count, "\n")
+
+# FINAL SUMMARY
+cat("FINAL DATASET:\n")
+cat("Total rows:", nrow(filtered_metab), "\n")
+cat("Total ASVs:", n_distinct(filtered_metab$asv_code), "\n")
+cat("Total samples:", n_distinct(filtered_metab$sample), "\n")
+  
 ```
 
-# remove species occurences that don't occur in more than two replicate per site
-The study desigh has two PCR replicates per percentage (10, 20, 30, 40). A conservative replicate filtering approach has been applied a species/ASV will only be retained if it appears in more that two PCR replicates per site (across all replicates and percentages)
+#Remove control samples to examine elsewhere AppendixA_checking_control
 ```{r}
-# Remove the count column as it is no longer needed
-# Step 1: Create the counts data frame
-counts_sp <- filtered_dataframe_top_sp %>%
-  group_by(site, species) %>%
-  summarise(count = n(), .groups = 'drop')
+pattern_to_remove <- "^(DrosX|MAR|Cont)"
 
-# Step 2: Filter out rows where the combination of 'site' and 'species' appears only once
-sp_fil_metab_long_with_species <- filtered_dataframe_top_sp %>%
-  left_join(counts_sp, by = c("site", "species")) %>%
-  filter(count > 1) %>%
-  select(-count)  # Remove the count column as it is no longer needed
+# Controls (rows to remove)
+controls <- filtered_metab %>%
+  filter(grepl(pattern_to_remove, site))
 
-# Check samples removed from dataframe
-sp_removed_metab_long_with_species <- filtered_dataframe_top_sp %>%
-  left_join(counts_sp, by = c("site", "species")) %>%
-  filter(count <= 1 | is.na(count))
+write.csv(controls,
+          here::here("results/final_data_summaries/controls.csv"),
+          row.names = FALSE)
 
-# Verify the number of records before and after filtering
-original_count <- nrow(filtered_dataframe_top_sp)
-filtered_count <- nrow(sp_fil_metab_long_with_species)
-
-cat("Original number of records:", original_count, "\n")
-cat("Number of records after filtering:", filtered_count, "\n")
-cat("Number of records removed:", original_count - filtered_count, "\n")
-```
-
-# remove single ASV occurences
-Remove ASV's with only a single occurrence in a sample (in only one PCR replicate) this targets ASV's without identifications or OTU groupings
-```{r}
-# Step 1: Create the counts_asv data frame
-counts_asv <- metab_long_empty_species %>%
-  group_by(asv_code, site) %>%
-  summarise(count = n(), .groups = 'drop')
-
-# Inspect the counts_asv data frame
-print(counts_asv)
-
-# Step 2: Join and filter based on counts
-asv_fil_metab_long <- metab_long_empty_species %>%
-  left_join(counts_asv, by = c("asv_code", "site")) %>%
-  filter(count > 1) %>%
-  select(-count)  # Remove the count column as it is no longer needed
-
-# Step 3: Verify the number of records before and after filtering
-original_count <- nrow(metab_long_empty_species)
-filtered_count <- nrow(asv_fil_metab_long)
-
-cat("Original number of records:", original_count, "\n")
-cat("Number of records after filtering:", filtered_count, "\n")
-cat("Number of records removed:", original_count - filtered_count, "\n")
-```
-# bind filtered and filled dataframes
-```{r}
-#rejoin_dataframes
-filtered_dataframe <- rbind(sp_fil_metab_long_with_species, asv_fil_metab_long)
-
-# Define the values to be removed
-values_to_remove <- c('DrosX', 'Dros', 'MAR2T','MART2', 'Cont')
-
-# Create the new data frame with the rows to be removed
-controls_long <- filtered_dataframe[filtered_dataframe$site %in% values_to_remove, ]
-
-# Update the original data frame to keep only the remaining rows
-filtered_dataframe_samples <- filtered_dataframe[!filtered_dataframe$site %in% values_to_remove, ]
-
-filtered_dataframe_samples <- filtered_dataframe_samples %>%
-  mutate(
-    sample = gsub("^X", "", sample),      # Remove 'X' at the beginning of 'sample'
-    site_per = gsub("^X", "", site_per)   # Remove 'X' at the beginning of 'site_per'
-  )
-# remove 'NA' from dataframe
-filtered_dataframe_samples <- filtered_dataframe_samples %>%
-  mutate(across(c(kingdom, phylum, class, order, family, genus, species), ~ replace_na(., "")))
-
+# Keep only real samples
+filtered_dataframe_samples <- filtered_metab %>%
+  filter(!grepl(pattern_to_remove, site) | is.na(site))
 ```
 
 # save data for modeling in long format (includes PCR replicates)
@@ -414,87 +400,3 @@ file_name1 <- here::here(
 write.csv(filtered_dataframe_samples, file = file_name1, row.names = FALSE)
 ```
 
-# OPTION 1: Summarize values by site (with PCR replicates combined)
-```{r}
-# Summarize the data
-summarized_df <- filtered_dataframe_samples %>%
-  group_by(site_per, kingdom, phylum, class, order, family, genus, species, max_p_identity) %>%  # Group by specified columns including max_p_identity
-  summarise(reads = sum(reads, na.rm = TRUE), .groups = 'drop') %>%  # Sum the reads for each group
-  group_by(site_per, kingdom, phylum, class, order, family, genus, species) %>%  # Group by the main columns again
-  summarise(
-    reads = sum(reads, na.rm = TRUE),  # Sum the reads for each group
-    max_p_identity = ifelse(all(is.na(max_p_identity)), NA, max(max_p_identity, na.rm = TRUE)),  # Handle all NA case
-    .groups = 'drop'
-  )
-
-# Collapse rows by kingdom, phylum, class, order, family, genus, species
-collapsed_df <- summarized_df %>%
-  group_by(site_per, kingdom, phylum, class, order, family, genus, species) %>%
-  summarise(
-    reads = sum(reads, na.rm = TRUE),  # Sum the reads for each group
-    max_p_identity = ifelse(all(is.na(max_p_identity)), NA, max(max_p_identity, na.rm = TRUE)),  # Get max value of max_p_identity
-    .groups = 'drop'
-  )
-
-# Pivot wider to transform the site_per names into columns
-wide_summarised_df <- collapsed_df %>%
- pivot_wider(names_from = site_per, values_from = reads, values_fill = 0)  # Fill missing values with 0
-
-# List of columns to modify
-cols_to_modify <- c('kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'species')
-
-# Convert specified columns to character type
-wide_summarised_df[cols_to_modify] <- lapply(wide_summarised_df[cols_to_modify], as.character)
-
-# Replace NA values with empty strings in specified columns
-wide_summarised_df[cols_to_modify][is.na(wide_summarised_df[cols_to_modify])] <- ""
-
-# Print the resulting wide summarized data frame
-print(wide_summarised_df)
-
-```
-
-# Now aggregate species data so that the same species identification do not occur multiple times
-```{r}
-# List of columns to modify
-cols_to_modify <- c('kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'species')
-
-# Convert specified columns to character type
-wide_summarised_df[cols_to_modify] <- lapply(wide_summarised_df[cols_to_modify], as.character)
-
-# Replace NA values with empty strings in specified columns
-wide_summarised_df[cols_to_modify][is.na(wide_summarised_df[cols_to_modify])] <- ""
-
-# Print the resulting wide summarized data frame
-print(wide_summarised_df)
-
-# List of columns to group by
-group_cols <- c('kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'species')
-
-# Identify the columns that are site_per_per (excluding group columns and max_p_identity)
-site_per_cols <- setdiff(colnames(wide_summarised_df), c(group_cols, 'max_p_identity'))
-
-# Collapse rows by kingdom, phylum, class, order, family, genus, species
-collapsed_wide_summarised_df <- wide_summarised_df %>%
-  group_by(across(all_of(group_cols))) %>%
-  summarise(
-    max_p_identity = max(max_p_identity, na.rm = TRUE),  # Get max value of max_p_identity
-    across(all_of(site_per_cols), function(x) sum(x, na.rm = TRUE)),  # Sum the values for the site_per columns
-    .groups = 'drop'
-  )
-
-# Print the collapsed data frame
-print(collapsed_wide_summarised_df)
-```
-
-# save file
-```{r}
-# save filled dataframe
-timestamp <- format(Sys.time(), "%d_%m_%Y")
-
-# Create the file name with the timestamp (NOTE:Change the MiSeq number to the dataset you are working with)
-file_name <- here::here(
-  paste0("results/ten_site_data_summaries/ten_sites_wide_format_", timestamp, ".csv"))
-
- write.csv(collapsed_wide_summarised_df, file = file_name, row.names = FALSE)
-```

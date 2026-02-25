@@ -27,7 +27,7 @@ library(here)
 fambc <- read.csv(here::here("data/family_bugcodes.csv")) # macroinvertebrate taxoncodes
 
 # read in DNA data and align with full data labels (add back in hyphens)
-metab_filt <- read.csv(here::here("results/ten_site_data_summaries/ten_sites_final_long_format_16_12_2025.csv")) %>%
+metab_filt <- read.csv(here::here("results/ten_site_data_summaries/ten_sites_final_long_format_24_02_2026.csv")) %>%
   mutate(
     site = case_when(
       site == "FEH41843"  ~ "FEH-4184-3",
@@ -53,7 +53,10 @@ metab_filt <- metab_filt %>%
     shortcode = coalesce(shortcode, ""),
     
     # enforce Eiseniella tetraedra rule
-    shortcode = if_else(species == "Eiseniella tetraedra", "LO09", shortcode)
+    shortcode = if_else(species == "Eiseniella tetraedra", "LO09", shortcode),
+    
+        # enforce Macrostomum tuba rule (most like mistaken for Dugusiidae)
+    shortcode = if_else(species == "Macrostomum tuba", "IF61", shortcode)
   )
 
 # move data with bug codes into a new df
@@ -86,7 +89,7 @@ dir.create(
   showWarnings = FALSE
 )
 
-write.csv(metab_filt_macro, here::here("results/data_analysis/macro_data/ten_site_metaber_macro.csv"))
+write.csv(metab_filt_macro, here::here("results/data_analysis/macro_data/ten_site_metabar_macro.csv"))
 ```
 
 # How many sequences and ASVs were assigned to species in the final dataset
@@ -226,108 +229,136 @@ missing_pairs_morph_larg
 # Step 1: Identify species only in per = 10 per site
 species_only_10_per_site <- metab_filt_macro %>%
   group_by(site, species) %>%
-  summarize(per_values = list(unique(per)), .groups = "drop") %>%
+  summarize(
+    per_values = list(unique(per)),
+    n_detections = n(),                          # number of rows
+    total_reads = sum(reads, na.rm = TRUE),      # total reads
+    .groups = "drop"
+  ) %>%
   filter(sapply(per_values, function(x) length(x) == 1 && x == 10)) %>%
-  select(site, species)
+  select(site, species, n_detections, total_reads)
+
 
 # Step 2: Add shortcode information
 species_only_10_shortcodes <- species_only_10_per_site %>%
-  left_join(metab_filt_macro %>% select(species, shortcode) %>% distinct(),
-            by = "species")
+  left_join(
+    metab_filt_macro %>% 
+      select(species, shortcode) %>% 
+      distinct(),
+    by = "species"
+  )
+
 
 # Step 3: Check if the shortcode is present in morph_larg at the same site
 species_only_10_shortcodes <- species_only_10_shortcodes %>%
   rowwise() %>%
-  mutate(shortcode_in_morph = shortcode %in% morph_larg$shortcode[morph_larg$site == site]) %>%
+  mutate(
+    shortcode_in_morph = shortcode %in% 
+      morph_larg$shortcode[morph_larg$site == site]
+  ) %>%
   ungroup()
 
-species_only_10_shortcodes
+
+# Keep TRUE matches
+species_only_10_shortcodes_true <- species_only_10_shortcodes %>%
+  filter(shortcode_in_morph)
+
+
+# Print summary of reads in these detections
+cat("Summary of species only in per=10 and present in morph:\n")
+cat("Total rows:", nrow(species_only_10_shortcodes_true), "\n")
+cat("Total detections:", sum(species_only_10_shortcodes_true$n_detections), "\n")
+cat("Total reads:", sum(species_only_10_shortcodes_true$total_reads), "\n\n")
+
+
+species_only_10_shortcodes_true
+
 ```
 
 Classify all taxa found in run into common name groups for pie charts
 ```{r}
 # assigning common group names
 
+# --- Assign groups for no_bc ---
 no_bc <- no_bc %>%
   mutate(group = case_when(
     # Terrestrial invertebrates
-    order %in% c("Hymenoptera", "Araneae", "Sarcoptiformes", "Pseudoscorpiones", "Mesostigmata") ~ "terrestrial invertebrate",
+    order %in% c("Hymenoptera", "Araneae", "Sarcoptiformes", "Pseudoscorpiones", "Mesostigmata", "Ixodida", "Trombidiformes") ~ "terrestrial invertebrate",
     class %in% c("Collembola", "Diplopoda", "Chilopoda", "Symphyla") ~ "terrestrial invertebrate",
     phylum %in% c("Mollusca") ~ "terrestrial invertebrate",
     class == "Insecta" & !is.na(species) & species != "" ~ "terrestrial invertebrate",
     family %in% c("Ocnerodrilidae", "Bdellidae", "Lumbricidae") ~ "terrestrial invertebrate",
-    
+
     # Freshwater microinvertebrates
     class %in% c("Branchiopoda", "Ostracoda", "Hexanauplia", "Gymnolaemata", "Copepoda") ~ "freshwater microinvertebrate",
-    phylum %in% c("Tardigrada", "Bryozoa","Tubulinea", "Gastrotricha") ~ "freshwater microinvertebrate",
-    
+    phylum %in% c("Tardigrada", "Bryozoa", "Tubulinea", "Gastrotricha") ~ "freshwater microinvertebrate",
+
     # Fungi
-    phylum %in% c("Ascomycota", "Mucoromycota", "Heterokontophyta", "Basidiomycota", "Oomycota") ~ "fungi",
+    phylum %in% c("Ascomycota", "Mucoromycota", "Heterokontophyta", "Basidiomycota", "Oomycota", "Zygomycota") ~ "fungi",
 
     # Fish
     phylum == "Chordata" ~ "fish",
-    
+
     # Amoeba / Zooplankton / Rotifers
-    phylum %in% c("Rotifera", "Amoebozoa", "Evosea","Discosea") ~ "amoeba/rotifers/zooplankton",
+    phylum %in% c("Rotifera", "Amoebozoa", "Evosea", "Discosea", "Cercozoa") ~ "amoeba/rotifers/zooplankton",
+    class == "Bigyra" ~ "amoeba/rotifers/zooplankton",
     species == "uncultured zooplankton" ~ "amoeba/rotifers/zooplankton",
-    
+
     # Algae / Plants
-    phylum %in% c("Rhodophyta", "Ochrophyta", "Bacillariophyta", "Chlorophyta", "Streptophyta", "Cryptista",
-    "Gyrista", "Magnoliophyta") | class %in% c("Phaeophyceae", "Synurophyceae") ~ "algae/plants",
-    
+    phylum %in% c("Rhodophyta", "Ochrophyta", "Bacillariophyta", "Chlorophyta", "Streptophyta", "Cryptista", "Gyrista", "Magnoliophyta") ~ "algae/plants",
+    class %in% c("Phaeophyceae", "Synurophyceae", "Chrysophyceae") ~ "algae/plants",
+
     # Unassigned
     kingdom == "Unassigned" ~ "unassigned",
     kingdom == "Eukaryota" & (is.na(phylum) | phylum == "") & (is.na(class) | class == "") ~ "unassigned",
-    
+
     # Invertebrates (unknown origin)
     phylum %in% c("Platyhelminthes", "Nemertea", "Nematoda", "Cnidaria", "Porifera", "Polychaeta", "invertebrate environmental sample") ~ "invertebrates (unknown origin)",
     class == "Malacostraca" ~ "invertebrates (unknown origin)",
     phylum == "Annelida" & (is.na(species) | species == "") ~ "invertebrates (unknown origin)",
     class %in% c("Insecta", "Trombidiformes") & (is.na(species) | species == "") ~ "invertebrates (unknown origin)",
     species %in% c("Enchytraeida sp. MC-2", "Haplotaxida sp. MC-1") ~ "invertebrates (unknown origin)",
-    phylum == "Arthropoda" & (!is.na(class) & class == "") ~ "invertebrates (unknown origin)",
+    phylum == "Arthropoda" & (is.na(class) | class == "") ~ "invertebrates (unknown origin)",
     class == "Arachnida" & (is.na(order) | order == "") ~ "invertebrates (unknown origin)",
     order == "Trombidiformes" & (is.na(family) | family == "") ~ "invertebrates (unknown origin)",
-    
+
     # Bacteria
     kingdom == "Prokaryota" ~ "bacteria",
-    
-    # Fallback
+
+    # Catch-all fallback
     TRUE ~ NA_character_
   ))
 
+# --- Assign group for metab_filt_macro ---
 metab_filt_macro <- metab_filt_macro %>%
   mutate(group = "freshwater macroinvertebrates")
 
+# --- Combine and summarise ---
 metab_filt_grps <- rbind(metab_filt_macro, no_bc) %>%
   select(group, asv_code, reads) %>%
-  group_by(asv_code, group) %>%       # group by ASV and group
-  summarise(reads = sum(reads, na.rm = TRUE), .groups = "drop")  # sum reads per ASV/group
+  group_by(asv_code, group) %>%
+  summarise(reads = sum(reads, na.rm = TRUE), .groups = "drop")
 
-# Summarise by group
-asv_reads_grp_sum<- metab_filt_grps %>%
+# --- Summarise by group ---
+asv_reads_grp_sum <- metab_filt_grps %>%
   group_by(group) %>%
   summarise(
-    n_asv = n_distinct(asv_code),   # count unique ASVs
-    total_reads = sum(reads, na.rm = TRUE),  # sum reads
+    n_asv = n_distinct(asv_code),
+    total_reads = sum(reads, na.rm = TRUE),
     .groups = "drop"
   )
 
-# View the summary
-asv_reads_grp_sum
-
-# Create output directory if needed
-dir.create(
-  here::here("results/data_analysis/pie_charts"),
-  recursive = TRUE,
-  showWarnings = FALSE
-)
+# --- Output ---
+dir.create(here::here("results/data_analysis/pie_charts"), recursive = TRUE, showWarnings = FALSE)
 
 write.csv(
   asv_reads_grp_sum,
   here::here("results/data_analysis/pie_charts/asv_reads_grp_sum.csv"),
   row.names = FALSE
 )
+
+# View
+asv_reads_grp_sum
 ```
 # compare abundance to dry weight
 ```{r}

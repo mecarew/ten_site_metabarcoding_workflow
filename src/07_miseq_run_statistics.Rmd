@@ -20,10 +20,12 @@ library(here)
 
 ```{r}
 # input unfiltered metabarcoding data with final taxonomy
-metab_fil <- read.csv(here::here("results/ten_site_data_summaries/ten_sites_vsearch_data_summary_filled_long_format_16_12_2025.csv"))
+metab_fil <- read.csv(here::here("results/ten_site_data_summaries/ten_sites_vsearch_data_summary_filled_long_format_24_02_2026.csv"))
 
-# input  final flitered metabarcoding data     
-metab_filt <- read.csv(here::here("results/ten_site_data_summaries/ten_sites_final_long_format_16_12_2025.csv"))
+metab_fil <- metab_fil[!grepl("^Cont", metab_fil$sample), ]
+
+# input final flitered metabarcoding data     
+metab_filt <- read.csv(here::here("results/ten_site_data_summaries/ten_sites_final_long_format_24_02_2026.csv"))
 ```
 
 

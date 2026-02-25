@@ -3,11 +3,6 @@ title: "Metabarcoding Quantification"
 description: |
   A QIIME2-based metabarcoding workflow. Part 2.
 author:
-  - name: Your Name Here
-    url: https://example.com/
-    affiliation: Example Organisation
-    affiliation_url: https://example.com/
-    orcid_id: 0000-0000-0000-0000
   - name: Jessica Chung
     url: https://github.com/jessicachung
     affiliation: Melbourne Bioinformatics, PEARG
@@ -48,6 +43,7 @@ suppressPackageStartupMessages({
   library(fs)
   library(qiime2R)
   library(lulu)
+  library(ggplot2)
 })
 
 xaringanExtra::use_panelset()
@@ -62,44 +58,6 @@ current_path_env <- Sys.getenv("PATH")
 Sys.setenv(PATH=paste0("/mnt/galaxy/gvl/software/shared_envs/qiime2/bin:",
                        current_path_env))
 Sys.setenv(PYTHONNOUSERSITE="/mnt/galaxy/gvl/software/shared_envs/qiime2/lib/python*/site-packages/")
-```
-
-#### If running files transfered from water-prod###
-```{r}
-# You can use the here::here function to define a path relative to the project 
-#  directory or use an absolute path
-results_dir <- here::here("results")
-
-# Log files will be stored inside the logs directory inside the results directory
-logs_dir <- file.path(results_dir, "logs")
-
-# set cwl path
-cwl_path <- here("param/cwl")
-
-# re-set combined, dada2 path
-combined_dir <- file.path(results_dir, "combined")
-dada2_dir <- file.path(results_dir, "dada2")
-demux_dir <- file.path(results_dir, "demux")
-import_data_dir <- file.path(results_dir, "import_data")
-lib_dir <- file.path(results_dir, "lib")
-lulu_dir <- file.path(results_dir, "lulu")
-
-targets <- data.frame(FileName=import_targets,
-                      SampleName=basename(import_targets),
-                      Factor=basename(import_targets),
-                      output=paste0(import_targets, ".qza"))
-import_targets <- here("tmp/import_targets.txt")
-write.table(targets, file=import_targets, sep="\t", row.names=FALSE, quote=FALSE)
-cwl_path <- here("param/cwl")
-
-# use_slurm <- FALSE
-use_slurm <- TRUE
-
-# Settings for slurm (you can ignore these if `use_slurm` is set to FALSE)
-slurm_conffile <- here::here("src/.batchtools.conf.R")
-slurm_template <- here::here("src/batchtools.slurm.tmpl")
-slurm_resources <- list(partition="main", ntasks=1, ncpus=1, memory=4096)
-slurm_n_jobs <- 10
 ```
 
 ```{r}
@@ -256,10 +214,9 @@ dir_tree(combined_dir)
 
 # DADA2
 
-First, define the lengths that amplicon groups will be truncated to.
+First, define the lengths that amplicon groups will be truncated to. Set truncation length of reads based on quality plots in the 01_preprocessing. Where does read quality drop off
 
 ```{r}
-# TODO: Custom truncation lengths from file? Don't know how this should be handled
 truncation_lengths <- data.frame(
   SampleName = c("short", "right"), # customize amplicon name for dataset
   forward_trunc_length = c(140, 140), # set truncation length for forward reads based on quality plots
@@ -574,24 +531,33 @@ summarize_asvs <- function(df) {
   )
 }
 
-before_summary <- summarize_asvs(before_df) %>% mutate(status = "Before Filtering")
-after_summary  <- summarize_asvs(after_df)  %>% mutate(status = "After Filtering")
+before_summary <- summarize_asvs(before_df) %>% 
+  mutate(status = "Before Filtering")
+
+after_summary  <- summarize_asvs(after_df)  %>% 
+  mutate(status = "After Filtering")
 
 # Combine
 combined <- bind_rows(before_summary, after_summary)
 
-
-# Plot: total reads vs prevalence
-ggplot(combined, aes(x = prevalence, y = total_reads, color = status)) +
+# Create plot object
+p <- ggplot(combined, aes(x = prevalence, y = total_reads, color = status)) +
   geom_jitter(width = 0.2, height = 0.2, alpha = 0.6) +
-  scale_y_log10() +  # log scale to see low-abundance ASVs clearly
+  scale_y_log10() +
   labs(
     x = "Prevalence (number of samples)",
     y = "Total reads per ASV (log10)",
     title = "Effect of Filtering on ASVs"
   ) +
   theme_minimal() +
-  scale_color_manual(values = c("Before Filtering" = "red", "After Filtering" = "blue"))
+  scale_color_manual(values = c("Before Filtering" = "red",
+                                "After Filtering" = "blue"))
+
+# Save plot
+ggsave("ASV_filtering_effect.png", plot = p, width = 8, height = 6, dpi = 300)
+
+# Save plot
+ggsave(file.path(statistics_dir,"short_asv_filtering_effect.png"), plot = p, width = 8, height = 6, dpi = 300)
 
 ```
 
@@ -642,6 +608,9 @@ ggplot(combined, aes(x = prevalence, y = total_reads, color = status)) +
   ) +
   theme_minimal() +
   scale_color_manual(values = c("Before Filtering" = "red", "After Filtering" = "blue"))
+
+# Save plot
+ggsave(file.path(statistics_dir,"right_asv_filtering_effect.png"), plot = p, width = 8, height = 6, dpi = 300)
 
 ```
 
@@ -749,7 +718,7 @@ right_table <- read_qza(file.path(dada2_dir, "right_table_filtered.qza"))
 right_table_df <- data.frame(right_table$data)
 right_match_list <- read.table(file.path(lulu_dir, "right_match_list.txt"))
 
-# TODO: Currently using default parameters
+# using default parameters
 z <- capture.output(right_lulu <- lulu(right_table_df, right_match_list))
 
 dim(right_lulu$original_table)

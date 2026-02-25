@@ -41,25 +41,14 @@ right_seq <- qiime2R::read_qza(here::here("results/dada2/right_representative_se
 # check classification data for short amplicon
 ```{r}
 short_classifications$data %>% head(100)
-```
-
-# check classification data for right amplicon
-```{r}
 right_classifications$data %>% head(100)
 ```
-
 
 ```{r}
 # Pull out table of read counts with LULU filter applied
 short_lulu$curated_table
-```
-
-
-```{r}
-# Pull out table of read counts with LULU filter applied
 right_lulu$curated_table
 ```
-
 ```{r}
 # merge short_classifications with thersholds
 short_df <- merge(short_classifications$data, thresholds_list[["short"]], by.x="Feature.ID", by.y="feature-id")
@@ -69,25 +58,15 @@ right_df <- merge(right_classifications$data, thresholds_list[["right"]], by.x="
 
 ```{r}
 short_seq$data %>% head
-```
-
-```{r}
 right_seq$data %>% head
 ```
-
 ```{r}
 short_df %>% arrange(desc(max_p_identity)) %>% head(100)
-```
-
-```{r}
 right_df %>% arrange(desc(max_p_identity)) %>% head(100)
 ```
 
 ```{r}
 table(short_df$Taxon == "Unassigned")
-```
-
-```{r}
 table(right_df$Taxon == "Unassigned")
 ```
 
@@ -256,7 +235,7 @@ dir.create(here::here("results/final_data_summaries"))
 timestamp <- format(Sys.time(), "%d_%m_%Y")
 
 # Create the file name with the timestamp 
-file_name <- paste0(here::here("results/final_data_summaries/MiSeq23_vsearch_data_summary_"), timestamp, ".csv")
+file_name <- paste0(here::here("results/final_data_summaries/miseq13_vsearch_data_summary_"), timestamp, ".csv")
 
 # Save the dataframe with the new file name
 write.csv(final_df, file = file_name, row.names = FALSE)

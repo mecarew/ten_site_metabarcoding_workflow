@@ -3,7 +3,7 @@ title: "Metabarcoding Preprocessing"
 description: |
   A QIIME2-based metabarcoding workflow. Part 1.
 author:
-  - name: Your Name Here
+  - name: Jessica Chung
     url: https://example.com/
     affiliation: Example Organisation
     affiliation_url: https://example.com/
@@ -99,7 +99,7 @@ Sys.setenv(PATH=paste0("/mnt/galaxy/gvl/software/shared_envs/qiime2_2023-07/bin:
 Sys.setenv(PYTHONPATH="/mnt/galaxy/gvl/software/shared_envs/qiime2_2023-07/lib/python3.8/site-packages/")
 ```
 
-And define some functions (might move this elsewhere...)
+And define some functions
 
 ```{r}
 extract_targets <- function(x, name) {
