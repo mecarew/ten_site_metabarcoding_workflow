@@ -28,10 +28,10 @@ dir <- "~/git/ten_site_metabarcoding_workflow/"
 # read in past site data
 past_macros <- read.csv(paste0(dir, "data/ten_site_past_data.csv"))
 
-# remove non-macroinvertebrates
+# remove non-macroinvertebrates and order codes for taxa normally ID to species
 remove_codes <- c(
   "OP","QO","OJ","QC","QA","OG04","QD","QA02","QE","QL","II",
-  "QP","QA01","QA04","QT","ZD")
+  "QP","QA01","QA04","QT","ZD", "KG", "LH", "LH99", "LH")
 
 # pull out autumn data
 # past_macros <- past_macros %>%
@@ -41,7 +41,13 @@ remove_codes <- c(
 past_macros <- past_macros %>%
   dplyr::filter(!shortcode %in% remove_codes) %>%
   dplyr::filter(season == "spring")%>%                 # keep only spring samples
-  dplyr::filter(year >= 2010 & year <= 2021)           # keep years 2015 to 2020
+  dplyr::filter(year >= 2010 & year <= 2021)           # keep years 2010 to 2021
+
+# remove order only identification for group that are normally IDed to family
+past_macros %>%
+  filter(grepl("^[A-Za-z]{2}$", shortcode)) %>%
+  distinct(shortcode) %>%
+  arrange(shortcode)
 ```
 
 
@@ -129,130 +135,7 @@ no_bc <- dna %>%
 ```
 
 
-# plot comparing community structure
-```{r}
-# create presence/absence dataframes
-past_pa <- past_macros %>%
-  group_by(site, shortcode, year) %>%
-  summarise(present = 1, .groups = "drop")
-
-
-meta_pa <- dna_macro %>%
-  group_by(site, shortcode, year) %>%
-  summarise(present = 1, .groups = "drop")
-
-# -------------------------------------------------------------
-# STEP 0: Prepare long-format data
-# -------------------------------------------------------------
-
-# DNA: one per site
-dna_long <- meta_pa %>%
-  mutate(treatment = "DNA",
-         sample_id = paste0(site, "_DNA"))
-
-# Morph: multiple per site (different years)
-morph_long <- past_pa %>%
-  mutate(treatment = "Morph",
-         sample_id = paste0(site, "_", year))
-
-# Combine
-all_pa <- bind_rows(dna_long, morph_long)
-
-# -------------------------------------------------------------
-# STEP 1: Build sample × species matrix (presence/absence)
-# -------------------------------------------------------------
-
-comm_matrix <- all_pa %>%
-  group_by(site, treatment, sample_id, shortcode) %>%
-  summarise(present = max(present), .groups = "drop") %>%  # collapse duplicates
-  pivot_wider(
-    names_from = shortcode,
-    values_from = present,
-    values_fill = 0
-  )
-
-# -------------------------------------------------------------
-# STEP 2: Species matrix only
-# -------------------------------------------------------------
-
-species_mat <- comm_matrix %>%
-  select(-site, -treatment, -sample_id) %>%
-  as.data.frame()
-
-# -------------------------------------------------------------
-# STEP 3: Metadata
-# -------------------------------------------------------------
-
-meta <- comm_matrix %>%
-  select(site, treatment, sample_id)
-
-# -------------------------------------------------------------
-# STEP 4: CLR transform (add pseudocount to avoid log(0))
-# -------------------------------------------------------------
-
-species_clr <- clr(species_mat + 1) %>%
-  as.data.frame()
-
-# -------------------------------------------------------------
-# STEP 5: NMDS (Euclidean on CLR = Aitchison distance)
-# -------------------------------------------------------------
-
-set.seed(123)
-nmds <- metaMDS(species_clr, distance = "euclidean", k = 2, trymax = 100)
-
-# -------------------------------------------------------------
-# STEP 6: Extract site/sample scores
-# -------------------------------------------------------------
-
-scores_df <- as.data.frame(scores(nmds, display = "sites"))
-scores_df <- cbind(meta, scores_df)
-
-stress_val <- round(nmds$stress, 3)
-
-# -------------------------------------------------------------
-# STEP 7: Plot NMDS
-# -------------------------------------------------------------
-
-site_shapes <- 0:9  # 10 distinct shapes for 10 sites
-
-nmds_plot <- ggplot(scores_df, aes(NMDS1, NMDS2, color = treatment, shape = site)) +
-  geom_point(size = 4) +
-  scale_shape_manual(values = site_shapes) +
-  theme_classic() +
-  labs(
-    title = paste0("Stress = ", stress_val),
-    x = "NMDS1",
-    y = "NMDS2",
-    color = "identification method",
-    shape = "site"
-  ) +
-  theme(
-    plot.title = element_text(hjust = 0),   # left-align title
-    axis.title.x = element_text(hjust = 0.5), # left-align x-axis label
-    axis.title.y = element_text(hjust = 0.5), # left-align y-axis label
-    panel.border = element_rect(color = "black", fill = NA, linewidth = 1)
-  )
-#-------------------------------------------------------------
-# Save as PNG
-ggsave(
-  filename = here::here("results/data_analysis/past_data/ten_sites_past_nmds_plot.png"),  # file name
-  plot = nmds_plot,                    # the plot object
-  width = 8,                           # width in inches
-  height = 6,                          # height in inches
-  dpi = 300                             # resolution
-)
-
-# Optional: save as PDF
-ggsave(
-  filename = here::here("results/data_analysis/past_data/ten_sites_past_nmds_plot.png"),
-  plot = nmds_plot,
-  width = 8,
-  height = 6
-)
-
-print(nmds_plot)
-```
-
+Plot comparing community structure
 ```{r}
 # checking why BNY-2904-2 looks different
 shortcode_diff <- {
@@ -279,6 +162,161 @@ shortcode_diff <- {
 }
 ```
 
+Community structure across time
+```{r}
+# create presence/absence dataframes
+past_pa <- past_macros %>%
+  group_by(site, shortcode, year) %>%
+  summarise(present = 1, .groups = "drop")
+
+
+meta_pa <- dna_macro %>%
+  group_by(site, shortcode, year) %>%
+  summarise(present = 1, .groups = "drop")
+
+# Prepare long-format data
+#
+# DNA: one per site
+dna_long <- meta_pa %>%
+  mutate(treatment = "DNA",
+         sample_id = paste0(site, "_DNA"))
+
+# Morph: multiple per site (different years)
+morph_long <- past_pa %>%
+  mutate(treatment = "Morph",
+         sample_id = paste0(site, "_", year))
+
+# Combine
+all_pa <- bind_rows(dna_long, morph_long)
+
+
+# STEP 1: Build sample × species matrix (presence/absence)
+
+comm_matrix <- all_pa %>%
+  group_by(site, treatment, sample_id, shortcode) %>%
+  summarise(present = max(present), .groups = "drop") %>%  # collapse duplicates
+  pivot_wider(
+    names_from = shortcode,
+    values_from = present,
+    values_fill = 0
+  )
+
+
+# STEP 2: Species matrix only
+species_mat <- comm_matrix %>%
+  select(-site, -treatment, -sample_id) %>%
+  as.data.frame()
+
+# STEP 3: Metadata
+meta <- comm_matrix %>%
+  select(site, treatment, sample_id)
+
+
+# STEP 4: CLR transform (add pseudocount to avoid log(0))
+species_clr <- clr(species_mat + 1) %>%
+  as.data.frame()
+
+
+# STEP 5: NMDS (Euclidean on CLR = Aitchison distance)
+set.seed(123)
+nmds <- metaMDS(species_clr, distance = "euclidean", k = 2, trymax = 100)
+
+# STEP 6: Extract site/sample scores
+scores_df <- as.data.frame(scores(nmds, display = "sites"))
+scores_df <- cbind(meta, scores_df)
+
+stress_val <- round(nmds$stress, 3)
+
+
+# STEP 7: Plot NMDS
+site_shapes <- 0:9  # 10 distinct shapes for 10 sites
+# Define site factor with inserted header levels
+scores_df$site <- factor(
+  scores_df$site,
+  levels = c(
+    "HRHA",
+    "FEH-4184-3","YAR-3637-7",
+    "HRLA",
+    "BNY-2904-2","UYT-199-3","WMI-232-0",
+    "LRHA",
+    "FER-647-5","GRD-7562-0","TOO-4270-0",
+    "LRLA",
+    "DNG-31881-3","DNG-7957-4"
+  )
+)
+
+#  Define shapes (NA for headers so no symbol is drawn)
+site_shapes <- c(
+  NA, 0,1,
+  NA, 2,3,4,
+  NA, 5,6,7,
+  NA, 8,9
+)
+
+#  Define legend labels
+site_labels <- c(
+  "HRHA" = "High richness / High abundance",
+  "FEH-4184-3" = "  FEH-4184-3",
+  "YAR-3637-7" = "  YAR-3637-7",
+  
+  "HRLA" = "High richness / Low abundance",
+  "BNY-2904-2" = "  BNY-2904-2",
+  "UYT-199-3" = "  UYT-199-3",
+  "WMI-232-0" = "  WMI-232-0",
+  
+  "LRHA" = "Low richness / High abundance",
+  "FER-647-5" = "  FER-647-5",
+  "GRD-7562-0" = "  GRD-7562-0",
+  "TOO-4270-0" = "  TOO-4270-0",
+  
+  "LRLA" = "Low richness / Low abundance",
+  "DNG-31881-3" = "  DNG-31881-3",
+  "DNG-7957-4" = "  DNG-7957-4"
+)
+
+#  Create plot
+nmds_plot <- ggplot(scores_df, aes(NMDS1, NMDS2, color = treatment, shape = site)) +
+  geom_point(size = 4) +
+  scale_shape_manual(
+    values = site_shapes,
+    labels = site_labels,
+    drop = FALSE
+  ) +
+  theme_classic() +
+  labs(
+    title = paste0("Stress = ", stress_val),
+    x = "NMDS1",
+    y = "NMDS2",
+    color = "identification method",
+    shape = "Site"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 1),
+    legend.text = element_text(size = 10)
+  )
+
+print(nmds_plot)
+
+# Save as PNG
+ggsave(
+  filename = here::here("results/data_analysis/past_data/ten_sites_past_nmds_plot.png"),  # file name
+  plot = nmds_plot,                    # the plot object
+  width = 10,                           # width in inches
+  height = 6,                          # height in inches
+  dpi = 300                             # resolution
+)
+
+# Optional: save as PDF
+ggsave(
+  filename = here::here("results/data_analysis/past_data/ten_sites_past_nmds_plot.png"),
+  plot = nmds_plot,
+  width = 9,
+  height = 6
+)
+
+print(nmds_plot)
+```
                                        
 
 ```{r}

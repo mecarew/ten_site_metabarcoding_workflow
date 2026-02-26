@@ -9,6 +9,8 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+This notebook is designed to perform analyses on the metropolitan macroinvertebrate component of the dataset. It summarises the reads obtained, the taxa identified, and the macroinvertebrates detected across different sites, including dry weights and sample percentages.
+
 ```{r supress warning}
 # load libraries
 library(tidyverse)
@@ -20,9 +22,16 @@ library(ggplot2)
 library(RColorBrewer)
 library(patchwork)
 library(here)
-```
 
-```{r}
+# load required data files
+
+# load site and dry weight data
+site_dw <- read.csv(here::here("data/ten_site_dry_weight.csv"))
+
+# Load morphological data files
+morph50 <- read.csv(here::here("data/ten_site_50ml_morph_data.csv"))
+morph_larg <- read.csv(here::here("data/ten_site_large_frac_data.csv"))
+
 # add taxoncodes to dna data
 fambc <- read.csv(here::here("data/family_bugcodes.csv")) # macroinvertebrate taxoncodes
 
@@ -44,6 +53,11 @@ metab_filt <- read.csv(here::here("results/ten_site_data_summaries/ten_sites_fin
     )
   )
 
+
+```
+
+Add in taxoncodes to identify macroinvertebrates
+```{r}
 metab_filt <- metab_filt %>%
   left_join(fambc %>% select(family, shortcode), 
             by = "family", 
@@ -92,7 +106,8 @@ dir.create(
 write.csv(metab_filt_macro, here::here("results/data_analysis/macro_data/ten_site_metabar_macro.csv"))
 ```
 
-# How many sequences and ASVs were assigned to species in the final dataset
+# summarize macroinvertebrate data detection statistics
+How many sequences and ASVs were assigned to species. 
 ```{r}
 # total number of ASVs
 num_asv <- length(unique(metab_filt_macro$asv_code))
@@ -139,143 +154,7 @@ print(paste("percentage of marcoinvertebrate reads with species identifications"
 print(paste("no. of marcoinvertebrate species = ", sp_count))
 print(paste("no. of marcoinvertebrate familes = ", fam_count))
 ```
-
-```{r}
-# load site and dry weight data
-site_dw <- read.csv(here::here("data/ten_site_dry_weight.csv"))
-
-# Load morphological data files
-morph50 <- read.csv(here::here("data/ten_site_50ml_morph_data.csv"))
-morph_larg <- read.csv(here::here("data/ten_site_large_frac_data.csv"))
-
-# summarize number of families in 50mls
-morph50_nfam <- morph50 %>%
-  group_by(site) %>%
-  summarise(nfam_50ml = n_distinct(shortcode))
-
-# summarize abundance of families in 50mls
-morph50_abund <- morph50 %>%
-  group_by(site) %>%
-  summarise(abundance_50ml = sum(count, na.rm = TRUE))
-
-# summarise number of families in large fraction
-morph_larg_nfam <- morph_larg %>%
-  group_by(site) %>%
-  summarise(nfam_larfrac = n_distinct(shortcode))
-
-# summarise abundance in large fraction  
-morph_larg_abund <- morph_larg %>% 
-  group_by(site) %>%
-  summarise(abundance_larfrac = sum(count, na.rm = TRUE))
-
-# --- combine all summaries ---
-morph_sum <- morph50_nfam %>%
-  full_join(morph50_abund, by = "site") %>%
-  full_join(morph_larg_nfam, by = "site") %>%
-  full_join(morph_larg_abund, by = "site") %>%
-  left_join(
-    site_dw %>% select(site, rich_class, abund_class),
-    by = "site"
-  ) %>%
-  select(
-    site, rich_class, abund_class,
-    nfam_50ml, abundance_50ml,
-    nfam_larfrac, abundance_larfrac
-  )
-
-# Create output directory if needed
-dir.create(
-  here::here("results/data_analysis/morph_table"),
-  recursive = TRUE,
-  showWarnings = FALSE
-)
-
-write.csv(morph_sum, here::here("results/data_analysis/morph_table/ten_site_morph_summary.csv"))
-
-print(morph_sum)
-```
-# taxa missing from meta
-```{r}
-missing_pairs_morph50 <- morph50 %>%
-  filter(!is.na(shortcode), shortcode != "") %>%
-  select(site, shortcode, family) %>%
-  distinct() %>%   # <-- removes exact duplicates
-  anti_join(
-    metab_filt_macro_bio %>%
-      select(site, shortcode) %>%
-      distinct(),
-    by = c("site", "shortcode")
-  ) %>%
-  arrange(site, shortcode)
-
-missing_pairs_morph50
-```
-
-```{r}
-missing_pairs_morph_larg <- morph_larg %>%
-  filter(!is.na(shortcode), shortcode != "") %>%  # ignore blank or missing shortcodes
-  select(site, shortcode, family) %>%
-  anti_join(
-    metab_filt_macro_bio %>%
-      select(site, shortcode) %>%
-      distinct(),
-    by = c("site", "shortcode")
-  ) %>%
-  arrange(site, shortcode)
-
-missing_pairs_morph_larg
-```
-```{r}
-# Step 1: Identify species only in per = 10 per site
-species_only_10_per_site <- metab_filt_macro %>%
-  group_by(site, species) %>%
-  summarize(
-    per_values = list(unique(per)),
-    n_detections = n(),                          # number of rows
-    total_reads = sum(reads, na.rm = TRUE),      # total reads
-    .groups = "drop"
-  ) %>%
-  filter(sapply(per_values, function(x) length(x) == 1 && x == 10)) %>%
-  select(site, species, n_detections, total_reads)
-
-
-# Step 2: Add shortcode information
-species_only_10_shortcodes <- species_only_10_per_site %>%
-  left_join(
-    metab_filt_macro %>% 
-      select(species, shortcode) %>% 
-      distinct(),
-    by = "species"
-  )
-
-
-# Step 3: Check if the shortcode is present in morph_larg at the same site
-species_only_10_shortcodes <- species_only_10_shortcodes %>%
-  rowwise() %>%
-  mutate(
-    shortcode_in_morph = shortcode %in% 
-      morph_larg$shortcode[morph_larg$site == site]
-  ) %>%
-  ungroup()
-
-
-# Keep TRUE matches
-species_only_10_shortcodes_true <- species_only_10_shortcodes %>%
-  filter(shortcode_in_morph)
-
-
-# Print summary of reads in these detections
-cat("Summary of species only in per=10 and present in morph:\n")
-cat("Total rows:", nrow(species_only_10_shortcodes_true), "\n")
-cat("Total detections:", sum(species_only_10_shortcodes_true$n_detections), "\n")
-cat("Total reads:", sum(species_only_10_shortcodes_true$total_reads), "\n\n")
-
-
-species_only_10_shortcodes_true
-
-```
-
-Classify all taxa found in run into common name groups for pie charts
+Classify all taxa found in run into common name groups to product data for pie charts (Figure 2)
 ```{r}
 # assigning common group names
 
@@ -360,49 +239,138 @@ write.csv(
 # View
 asv_reads_grp_sum
 ```
-# compare abundance to dry weight
+Compare metabarcoding macroinvertebrate families to that in the 50ml sub-sample
 ```{r}
-abund_dw <- morph_sum %>%
-  left_join(site_dw %>% select(site, t_dw), by = "site")
+# summarize number of families in 50mls
+morph50_nfam <- morph50 %>%
+  group_by(site) %>%
+  summarise(nfam_50ml = n_distinct(shortcode))
 
-cor.test(abund_dw$abundance_50ml, abund_dw$t_dw, method = "pearson")
+# summarize abundance of families in 50mls
+morph50_abund <- morph50 %>%
+  group_by(site) %>%
+  summarise(abundance_50ml = sum(count, na.rm = TRUE))
 
-# # Your data
+# summarise number of families in large fraction
+morph_larg_nfam <- morph_larg %>%
+  group_by(site) %>%
+  summarise(nfam_larfrac = n_distinct(shortcode))
 
-# -----------------------------
-# 1. Abundance class vs dry weight
-# -----------------------------
-ggplot(abund_dw, aes(x = abund_class, y = t_dw, fill = abund_class)) +
-  geom_boxplot(alpha = 0.6) +
-  geom_jitter(width = 0.1) +
-  theme_minimal() +
-  labs(title = "Dry Weight by Abundance Class")
+# summarise abundance in large fraction  
+morph_larg_abund <- morph_larg %>% 
+  group_by(site) %>%
+  summarise(abundance_larfrac = sum(count, na.rm = TRUE))
+
+# --- combine all summaries ---
+morph_sum <- morph50_nfam %>%
+  full_join(morph50_abund, by = "site") %>%
+  full_join(morph_larg_nfam, by = "site") %>%
+  full_join(morph_larg_abund, by = "site") %>%
+  left_join(
+    site_dw %>% select(site, rich_class, abund_class),
+    by = "site"
+  ) %>%
+  select(
+    site, rich_class, abund_class,
+    nfam_50ml, abundance_50ml,
+    nfam_larfrac, abundance_larfrac
+  )
+
+# Create output directory if needed
+dir.create(
+  here::here("results/data_analysis/morph_table"),
+  recursive = TRUE,
+  showWarnings = FALSE
+)
+
+write.csv(morph_sum, here::here("results/data_analysis/morph_table/ten_site_morph_summary.csv"))
+
+print(morph_sum)
+```
+# Which taxa missing from metabarcoding data - 50mls
+```{r}
+missing_pairs_morph50 <- morph50 %>%
+  filter(!is.na(shortcode), shortcode != "") %>%
+  select(site, shortcode, family) %>%
+  distinct() %>%   # <-- removes exact duplicates
+  anti_join(
+    metab_filt_macro_bio %>%
+      select(site, shortcode) %>%
+      distinct(),
+    by = c("site", "shortcode")
+  ) %>%
+  arrange(site, shortcode)
+
+missing_pairs_morph50
+```
+
+# Which taxa missing from metabarcoding data - large fraction
+```{r}
+missing_pairs_morph_larg <- morph_larg %>%
+  filter(!is.na(shortcode), shortcode != "") %>%  # ignore blank or missing shortcodes
+  select(site, shortcode, family) %>%
+  anti_join(
+    metab_filt_macro_bio %>%
+      select(site, shortcode) %>%
+      distinct(),
+    by = c("site", "shortcode")
+  ) %>%
+  arrange(site, shortcode)
+
+missing_pairs_morph_larg
+```
+Which species are only in the 10% dry weight?
+```{r}
+# Step 1: Identify species only in per = 10 % dry weight
+species_only_10_per_site <- metab_filt_macro %>%
+  group_by(site, species) %>%
+  summarize(
+    per_values = list(unique(per)),
+    n_detections = n(),                          # number of rows
+    total_reads = sum(reads, na.rm = TRUE),      # total reads
+    .groups = "drop"
+  ) %>%
+  filter(sapply(per_values, function(x) length(x) == 1 && x == 10)) %>%
+  select(site, species, n_detections, total_reads)
 
 
-# -----------------------------
-# 2. Abundance vs dry weight
-# -----------------------------
-ggplot(abund_dw, aes(x = abund_class, y = t_dw)) +
-  geom_point(size = 3) +
-  geom_smooth(method = "lm", se = FALSE) +
-  theme_minimal() +
-  labs(title = "Abundance vs Dry Weight")
+# Step 2: Add shortcode information
+species_only_10_shortcodes <- species_only_10_per_site %>%
+  left_join(
+    metab_filt_macro %>% 
+      select(species, shortcode) %>% 
+      distinct(),
+    by = "species"
+  )
 
 
-# -----------------------------
-# 3. Dry weight vs richness (numeric)
-# -----------------------------
-ggplot(abund_dw, aes(x = rich_class, y = t_dw, fill = rich_class)) +
-  geom_boxplot(alpha = 0.6) +
-  geom_jitter(width = 0.1) +
-  theme_minimal() +
-  labs(title = "Dry Weight by Richness Class")
+# Step 3: Check if the shortcode is present in morph_larg at the same site
+species_only_10_shortcodes <- species_only_10_shortcodes %>%
+  rowwise() %>%
+  mutate(
+    shortcode_in_morph = shortcode %in% 
+      morph_larg$shortcode[morph_larg$site == site]
+  ) %>%
+  ungroup()
 
-t.test(t_dw ~ abund_class, data = abund_dw, var.equal = FALSE)
+
+# Keep TRUE matches
+species_only_10_shortcodes_true <- species_only_10_shortcodes %>%
+  filter(shortcode_in_morph)
+
+
+# Print summary of reads in these detections
+cat("Summary of species only in per=10 and present in morph:\n")
+cat("Total rows:", nrow(species_only_10_shortcodes_true), "\n")
+cat("Total detections:", sum(species_only_10_shortcodes_true$n_detections), "\n")
+cat("Total reads:", sum(species_only_10_shortcodes_true$total_reads), "\n\n")
+
+
+species_only_10_shortcodes_true
 
 ```
-`
 
+Species counts per site and testing for abundance/diversity differences (Figure 3)
 ```{r}
 metab_filt_macro_fam_count <- metab_filt_macro %>%
   group_by(site) %>%
@@ -474,9 +442,51 @@ print(t.test(species ~ abund_class, data = rich_abun))
 
 
 ```
+# compare abundance to dry weight
+```{r}
+abund_dw <- morph_sum %>%
+  left_join(site_dw %>% select(site, t_dw), by = "site")
 
-Box plots of the proportion of species found in each subsample
+cor.test(abund_dw$abundance_50ml, abund_dw$t_dw, method = "pearson")
 
+# # Your data
+
+# -----------------------------
+# 1. Abundance class vs dry weight
+# -----------------------------
+ggplot(abund_dw, aes(x = abund_class, y = t_dw, fill = abund_class)) +
+  geom_boxplot(alpha = 0.6) +
+  geom_jitter(width = 0.1) +
+  theme_minimal() +
+  labs(title = "Dry Weight by Abundance Class")
+
+
+# -----------------------------
+# 2. Abundance vs dry weight
+# -----------------------------
+ggplot(abund_dw, aes(x = abund_class, y = t_dw)) +
+  geom_point(size = 3) +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_minimal() +
+  labs(title = "Abundance vs Dry Weight")
+
+
+# -----------------------------
+# 3. Dry weight vs richness (numeric)
+# -----------------------------
+ggplot(abund_dw, aes(x = rich_class, y = t_dw, fill = rich_class)) +
+  geom_boxplot(alpha = 0.6) +
+  geom_jitter(width = 0.1) +
+  theme_minimal() +
+  labs(title = "Dry Weight by Richness Class")
+
+t.test(t_dw ~ abund_class, data = abund_dw, var.equal = FALSE)
+
+```
+`
+
+
+Box plots of the proportion of species found in each subsample (figure 4)
 ```{r}
 # filter to >=97% identity
 metab_filt_macro97 <- metab_filt_macro %>% 
@@ -562,9 +572,234 @@ per_summary <- site_sample_prop %>%
   )
 
 per_summary
+
+pno <- ggplot(site_sample_prop, aes(x = factor(per), y = species_prop)) +
+  
+  geom_boxplot(
+    fill = "skyblue",
+    color = "black",
+    width = 0.6,
+    coef = Inf,          #   whiskers to min & max
+    outlier.shape = 19,
+    outlier.size = 2.5,
+    outlier.color = "black"
+  ) +
+  
+  stat_summary(
+    fun = mean,
+    geom = "point",
+    shape = 18,          # diamond
+    size = 4,
+    color = "black"
+  ) +
+  
+  labs(
+    x = "percentage of sample processed",
+    y = "proportion of species of total detected"
+  ) +
+  
+  theme_classic(base_size = 14) +
+  theme(
+    panel.background = element_rect(fill = "white", color = "black"),
+    plot.background = element_rect(fill = "white"),
+    plot.title = element_text(hjust = 0.5)
+  )
+
+# save as PNG
+ggsave(
+  filename = here::here("results/data_analysis/macro_data/species_proportion_plot_no_outliers.png"),
+  plot = pno,
+  width = 8,      # inches
+  height = 6,     # inches
+  dpi = 300       # high resolution
+)
+
+print(pno)
+```
+```{r}
+# -------------------------------------------------------------
+# Step 0: Filter to ≥97% identity
+# -------------------------------------------------------------
+
+metab_filt_macro97 <- metab_filt_macro %>% 
+  filter(max_p_identity >= 97)
+
+# -------------------------------------------------------------
+# Step 1: Remove species detections with <50 reads
+# (sum reads per site × per × species first)
+# -------------------------------------------------------------
+
+
+metab_filt_macro97_50 <- metab_filt_macro97 %>%
+  group_by(site, per, species) %>%
+  summarise(total_reads = sum(reads), .groups = "drop") %>%
+  filter(total_reads >= 5)
+# -------------------------------------------------------------
+# Step A: species richness per site × per
+# -------------------------------------------------------------
+
+site_per_totals <- metab_filt_macro97_50 %>%
+  group_by(site, per) %>%
+  summarise(
+    total_species = n_distinct(species),
+    .groups = "drop"
+  )
+
+# -------------------------------------------------------------
+# Step B: total species per site across all periods
+# -------------------------------------------------------------
+
+site_totals <- metab_filt_macro97_50 %>%
+  group_by(site) %>%
+  summarise(
+    site_total_species = n_distinct(species),
+    .groups = "drop"
+  )
+
+# -------------------------------------------------------------
+# Step C: join and compute proportion
+# -------------------------------------------------------------
+
+site_sample_prop <- site_per_totals %>%
+  left_join(site_totals, by = "site") %>%
+  mutate(
+    species_prop = total_species / site_total_species
+  )
+
+print(site_sample_prop)
+
+pno <- ggplot(site_sample_prop, aes(x = factor(per), y = species_prop)) +
+  
+  geom_boxplot(
+    fill = "skyblue",
+    color = "black",
+    width = 0.6,
+    coef = Inf,          # whiskers to min & max
+    outlier.shape = 19,
+    outlier.size = 2.5,
+    outlier.color = "black"
+  ) +
+  
+  stat_summary(
+    fun = mean,
+    geom = "point",
+    shape = 18,
+    size = 4,
+    color = "black"
+  ) +
+  
+  labs(
+    x = "percentage of sample processed",
+    y = "proportion of species of total detected"
+  ) +
+  
+  theme_classic(base_size = 14) +
+  theme(
+    panel.background = element_rect(fill = "white", color = "black"),
+    plot.background = element_rect(fill = "white")
+  )
+
+print(pno)
 ```
 
-Community structure across subsamples
+
+```{r}
+# -------------------------------------------------------------
+# Step 0: Filter to >=97% identity
+# -------------------------------------------------------------
+metab_filt_macro97 <- metab_filt_macro %>% 
+  filter(max_p_identity >= 97)
+
+# -------------------------------------------------------------
+# Step 1: Sum reads per site × per × species
+# -------------------------------------------------------------
+metab_filt_macro97_sum <- metab_filt_macro97 %>%
+  group_by(site, per, species) %>%
+  summarise(total_reads = sum(reads), .groups = "drop")
+
+# -------------------------------------------------------------
+# Step 2: Compute proportion of reads per site × per
+# -------------------------------------------------------------
+metab_filt_macro97_sum <- metab_filt_macro97_sum %>%
+  group_by(site, per) %>%
+  mutate(
+    reads_prop = total_reads / sum(total_reads) * 100   # % of reads
+  ) %>%
+  ungroup()
+
+# -------------------------------------------------------------
+# Step 3: Filter species below threshold percentage (e.g., 1%)
+# -------------------------------------------------------------
+threshold_pct <- 1  # adjust as needed, e.g., 1% of total reads
+metab_filt_macro97_pct <- metab_filt_macro97_sum %>%
+  filter(reads_prop >= threshold_pct)
+
+# -------------------------------------------------------------
+# Step 4: Compute species richness per site × per
+# -------------------------------------------------------------
+site_per_totals <- metab_filt_macro97_pct %>%
+  group_by(site, per) %>%
+  summarise(
+    total_species = n_distinct(species),
+    .groups = "drop"
+  )
+
+# -------------------------------------------------------------
+# Step 5: Compute total species per site across all periods
+# -------------------------------------------------------------
+site_totals <- metab_filt_macro97_pct %>%
+  group_by(site) %>%
+  summarise(
+    site_total_species = n_distinct(species),
+    .groups = "drop"
+  )
+
+# -------------------------------------------------------------
+# Step 6: Join and compute proportion of species detected
+# -------------------------------------------------------------
+site_sample_prop <- site_per_totals %>%
+  left_join(site_totals, by = "site") %>%
+  mutate(
+    species_prop = total_species / site_total_species
+  )
+
+print(site_sample_prop)
+
+p <- ggplot(site_sample_prop, aes(x = factor(per), y = species_prop)) +
+  
+  geom_boxplot(
+    fill = "skyblue",
+    color = "black",
+    width = 0.6,
+    coef = Inf,          # whiskers to min & max
+    outlier.shape = 19,
+    outlier.size = 2.5,
+    outlier.color = "black"
+  ) +
+  
+  stat_summary(
+    fun = mean,
+    geom = "point",
+    shape = 18,
+    size = 4,
+    color = "black"
+  ) +
+  
+  labs(
+    x = "percentage of sample processed",
+    y = "proportion of species of total detected"
+  ) +
+  
+  theme_classic(base_size = 14) +
+  theme(
+    panel.background = element_rect(fill = "white", color = "black"),
+    plot.background = element_rect(fill = "white")
+  )
+
+print(p)
+```
+
+Community structure between sub-samples (Figure 5)
 ```{r}
 # Step 1: build site_sample × species matrix
 comm_matrix <- metab_filt_macro97 %>%
@@ -595,34 +830,60 @@ mds_scores <- cbind(meta, mds_scores)
 # Step 7: plot with stress in title
 stress_val <- round(mds$stress, 3)
 
-n <- ggplot(mds_scores, aes(x = NMDS1, y = NMDS2, color = site, shape = as.factor(per))) +
+
+mds_scores$site <- factor(
+  mds_scores$site,
+  levels = c(
+    "HRHA",
+    "FEH-4184-3","YAR-3637-7",
+    "HRLA",
+    "BNY-2904-2","UYT-199-3","WMI-232-0",
+    "LRHA",
+    "FER-647-5","GRD-7562-0","TOO-4270-0",
+    "LRLA",
+    "DNG-31881-3","DNG-7957-4"
+  ))
+
+ n <- ggplot(mds_scores,
+            aes(x = NMDS1,
+                y = NMDS2,
+                color = site,
+                shape = as.factor(per))) +
   geom_point(size = 4, alpha = 0.9) +
-  theme_minimal(base_size = 14) +
-  scale_color_brewer(palette = "Paired") +  # nice distinct colors for 10 sites
+  
+  scale_color_manual(
+    values = site_colors,
+    labels = site_labels,
+    drop = FALSE
+  ) +
+  
   labs(
     title = paste0("Stress = ", stress_val),
     x = "NMDS1",
     y = "NMDS2",
-    color = "site",
-    shape = "sample percentage "
+    color = "Site",
+    shape = "Sample percentage"
   ) +
+  
+  theme_bw(base_size = 14) +
   theme(
     legend.position = "right",
+    panel.border = element_rect(color = "black", fill = NA),
     panel.grid.minor = element_blank(),
-    panel.grid.major = element_blank(),
-     panel.border = element_rect(color = "black", fill = NA, linewidth = 1)  # 🔲 adds black border
+    panel.grid.major = element_blank()
   )
-
 # save as PNG
-# ggsave(
-#   filename = here::here("results/data_analysis/macro_data/nmds_precentage_plot.png"),
-#   plot = n,
-#   width = 8,      # inches
-#   height = 6,     # inches
-#   dpi = 300       # high resolution
-# )
+ggsave(
+  filename = here::here("results/data_analysis/macro_data/nmds_precentage_plot.png"),
+  plot = n,
+  width = 10,      # inches
+  height = 6,     # inches
+  dpi = 300       # high resolution
+)
 print(n)
 ```
+
+Diversity across sample percentage and dry weight (Figure 7)
 ```{r}
 # Make df with species richness and dry weight of sub-samples
 site_samp_prop_dw <- metab_filt_macro %>%
@@ -653,17 +914,93 @@ site_samp_prop_dw <- metab_filt_macro %>%
   ) %>%
   select(-dw_code)  # optional: remove dw_code if you just want subsamp_dw
 
-# check result
-head(site_samp_prop_dw)
+# Step 1: build site_sample × species matrix
+comm_matrix <- metab_filt_macro97 %>%
+  group_by(site, per, species) %>%
+  summarise(abundance = sum(reads), .groups = "drop") %>%
+  pivot_wider(names_from = species, values_from = abundance, values_fill = 0)
 
-# PANEL A
+# Step 2: species matrix only
+species_mat <- comm_matrix %>%
+  select(-site, -per) %>%
+  as.data.frame()
+
+# Step 3: metadata
+meta <- comm_matrix %>%
+  select(site, per)
+
+# Step 4: CLR transform (pseudocount to avoid log(0))
+species_mat_clr <- clr(species_mat + 1) %>%
+  as.data.frame()
+
+# Step 5: run ordination (Euclidean distance after CLR = Aitchison distance)
+mds <- metaMDS(species_mat_clr, distance = "euclidean", k = 2, trymax = 100)
+
+# Step 6: extract scores
+mds_scores <- as.data.frame(scores(mds, display = "sites"))
+mds_scores <- cbind(meta, mds_scores)
+
+# Step 7: plot with stress in title
+stress_val <- round(mds$stress, 3)
+
+# -------------------------------------------------------------
+# GROUPED SITE LEGEND 
+# -------------------------------------------------------------
+
+# Factor and levels for header-style legend
+site_samp_prop_dw$site <- factor(
+  site_samp_prop_dw$site,
+  levels = c(
+    "HRHA",
+    "FEH-4184-3","YAR-3637-7",
+    "HRLA",
+    "BNY-2904-2","UYT-199-3","WMI-232-0",
+    "LRHA",
+    "FER-647-5","GRD-7562-0","TOO-4270-0",
+    "LRLA",
+    "DNG-31881-3","DNG-7957-4"
+  )
+)
+
+# Colors (NA for headers)
+site_colors <- c(
+  NA,
+  "#1b9e77","#d95f02",
+  NA,
+  "#7570b3","#e7298a","#66a61e",
+  NA,
+  "#e6ab02","#a6761d","#666666",
+  NA,
+  "#1f78b4","#b2df8a"
+)
+
+# Labels with indentation
+site_labels <- c(
+  "HRHA" = "High richness / High abundance",
+  "FEH-4184-3" = "  FEH-4184-3",
+  "YAR-3637-7" = "  YAR-3637-7",
+  
+  "HRLA" = "High richness / Low abundance",
+  "BNY-2904-2" = "  BNY-2904-2",
+  "UYT-199-3" = "  UYT-199-3",
+  "WMI-232-0" = "  WMI-232-0",
+  
+  "LRHA" = "Low richness / High abundance",
+  "FER-647-5" = "  FER-647-5",
+  "GRD-7562-0" = "  GRD-7562-0",
+  "TOO-4270-0" = "  TOO-4270-0",
+  
+  "LRLA" = "Low richness / Low abundance",
+  "DNG-31881-3" = "  DNG-31881-3",
+  "DNG-7957-4" = "  DNG-7957-4"
+)
+
+# PANEL A (no legend)
 p1 <- ggplot(site_samp_prop_dw, aes(x = per, y = sp_detected, color = site)) +
   geom_line(aes(group = site), linewidth = 0.6, alpha = 0.8) +
   geom_point(size = 2, alpha = 0.9) +
-  scale_color_brewer(palette = "Paired") +
-  scale_x_continuous(
-    labels = function(x) scales::percent(x / 100, accuracy = 1)
-  ) +
+  scale_color_manual(values = site_colors, labels = site_labels, drop = FALSE) +
+  scale_x_continuous(labels = function(x) scales::percent(x / 100, accuracy = 1)) +
   scale_y_continuous(limits = c(0, NA)) +
   labs(x = "sub-sample", y = "species richness") +
   theme_bw(base_size = 12) +
@@ -674,35 +1011,32 @@ p1 <- ggplot(site_samp_prop_dw, aes(x = per, y = sp_detected, color = site)) +
     panel.grid.major = element_blank()
   )
 
-# PANEL B
+# PANEL B (legend only)
 p2 <- ggplot(site_samp_prop_dw, aes(x = subsamp_dw, y = sp_detected, color = site)) +
   geom_line(aes(group = site), linewidth = 0.6, alpha = 0.8) +
   geom_jitter(width = 0.15, height = 0.15, size = 2, alpha = 0.9) +
-  scale_color_brewer(palette = "Paired") +
+  scale_color_manual(values = site_colors, labels = site_labels, drop = FALSE) +
   scale_y_continuous(limits = c(0, NA)) +
-  labs(x = "dry weight (g)", y = "species richness", color = "site") +
+  labs(x = "dry weight (g)", y = "species richness", color = "Site") +
   theme_bw(base_size = 12) +
   theme(
-    legend.position = "right",
     panel.border = element_rect(color = "black", fill = NA),
     panel.grid.minor = element_blank(),
-    panel.grid.major = element_blank()
+    panel.grid.major = element_blank(),
+    legend.position = "right"
   )
 
-# Combine panels
-library(patchwork)
+# Combine panels (only p2 shows the legend)
 combined_plot <- p1 | p2
 
 # Save
 ggsave(
   here::here("results/data_analysis/macro_data/species_richness_panels.png"), 
   plot = combined_plot,
-  width = 10, height = 4, dpi = 300
+  width = 11, height = 4, dpi = 300
 )
 
 print(combined_plot)
-
-
 ```
 
 
